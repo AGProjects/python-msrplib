@@ -305,6 +305,21 @@ class MSRPData(object):
             description = "MSRP %s %s" % (self.transaction_id, self.method)
         return description
 
+    def __repr__(self):
+        klass = type(self).__name__
+        if self.method is None:
+            description = "%s %s" % (self.transaction_id, self.code)
+            if self.comment is not None:
+                description += " %s" % self.comment
+        else:
+            description = "%s %s" % (self.transaction_id, self.method)
+        return '<%s at %s %s>' % (klass, hex(id(self)), description)
+
+    def __eq__(self, other):
+        if not isinstance(other, MSRPData):
+            return False
+        return self.encode()==other.encode()
+
     def add_header(self, header):
         self.headers[header.name] = header
 
