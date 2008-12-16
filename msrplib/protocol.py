@@ -298,11 +298,11 @@ class MSRPData(object):
 
     def __str__(self):
         if self.method is None:
-            description = "MSRP response: %03d" % self.code
+            description = "MSRP %s %s" % (self.transaction_id, self.code)
             if self.comment is not None:
                 description += " %s" % self.comment
         else:
-            description = "MSRP %s request" % self.method
+            description = "MSRP %s %s" % (self.transaction_id, self.method)
         return description
 
     def add_header(self, header):
