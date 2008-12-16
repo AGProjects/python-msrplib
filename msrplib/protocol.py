@@ -295,6 +295,8 @@ class MSRPData(object):
         self.code = code
         self.comment = comment
         self.headers = {}
+        self.data = ''
+        self.contflag = '$'
 
     def __str__(self):
         if self.method is None:
@@ -376,7 +378,7 @@ class MSRPData(object):
         return "\r\n-------%s%s\r\n" % (self.transaction_id, continuation)
 
     def encode(self):
-        return self.encode_start() + self.encode_end("$")
+        return self.encode_start() + self.data + self.encode_end(self.contflag)
 
 class MSRPProtocol(LineReceiver):
     MAX_LENGTH = 16384
