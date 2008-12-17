@@ -7,6 +7,8 @@ setup(name         = "python-msrplib",
       version      = __version__,
       author       = "Denis Bilenko",
       author_email = "support@ag-projects.com",
-      url          = "http://pypjua.org",
+      license      = "LGPL",
+      description  = "Client library for MSRP protocol and its relay extension (RFC 4975 and RFC4976)",
+      url          = "http://msrprelay.org",
       packages = ['msrplib'])
 
