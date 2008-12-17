@@ -2,7 +2,14 @@
 MSRP client library
 -------------------
 
+Copyright (c) 2008 AG Projects
+http://ag-projects.com
+
+Authors: Denis Bilenko, Ruud Klaver
+
+
 Description
+-----------
 
 A series of related instant messages between two or more parties can be
 viewed as part of a "message session", that is, a conversational exchange of
@@ -26,4 +33,10 @@ Protocol (SIP).
 
 MSRP sessions are defined in RFC 4975. The relay extension that can be used
 for NAT traversal purposes is defined in RFC 4976.
+
+
+License
+-------
+
+See LICENSE file.
 
