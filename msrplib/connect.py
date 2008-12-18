@@ -125,27 +125,36 @@ class AcceptorDirect(ConnectBase):
         # QQQ use ip from local_uri as binding interface?
         from twisted.internet import reactor
         factory = SpawnFactory(handler, self.MSRPSessionClass, local_uri, *self.args, **self.kwargs)
-        if local_uri.use_tls:
+        if local_uri.use_tls is False:
+            port = reactor.listenTCP(local_uri.port or 0, factory)
+        else:
             from gnutls.interfaces.twisted import X509Credentials
             cred = X509Credentials(None, None)
             port = reactor.listenTLS(local_uri.port or 0, factory, cred)
-        else:
-            port = reactor.listenTCP(local_uri.port or 0, factory)
-        # QQQ update local_uri.host as well?
-        local_uri.port = port.getHost().port
         return local_uri, port
 
     def prepare(self, local_uri=None):
+        """Start listening for an incoming MSRP connection using port and
+        use_tls from local_uri if provided.
+
+        Return full local path, suitable to put in SDP a:path attribute.
+        Note, that `local_uri' may be updated in place.
+        """
         if local_uri is None:
             local_uri = self.generate_local_uri()
         self.transport_event = event()
         local_uri, self.listener = self._listen(local_uri, self.transport_event.send)
+        # QQQ update local_uri.host as well?
+        local_uri.port = self.listener.getHost().port
         return [local_uri]
 
     def _accept(self):
         return self.transport_event.wait()
 
     def complete(self, full_remote_path):
+        """Accept an incoming MSRP connection and bind it.
+        Return MSRPSession instance.
+        """
         try:
             with MSRPIncomingConnectTimeout.timeout():
                 msrp = self._accept()
