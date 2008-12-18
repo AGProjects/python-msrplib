@@ -66,7 +66,9 @@ class BasicTest(unittest.TestCase):
             return _connect_msrp(server_path, client_path, msrp)
 
         group = JobGroup()
-        return group.spawn_new(client), group.spawn_new(server)
+        group.client = group.spawn_new(client)
+        group.server = group.spawn_new(server)
+        return group
 
     def setUp(self):
         self.timer = exc_after(self.PER_TEST_TIMEOUT, TimeoutError('per test timeout expired'))
@@ -114,15 +116,16 @@ class BasicTest(unittest.TestCase):
         self.assertSameData(x, y)
 
     def test_send_chunk(self):
-        client, server = self.setup_two_endpoints()
-        client, server = client.wait(), server.wait()
+        jobs = self.setup_two_endpoints()
+        client, server = jobs.wait_all()
+        #client = client.wait()
+        #server = server.wait()
         self._send_chunk(client, server)
         self._send_chunk(server, client)
         #self.assertNoIncoming(0.1, client, server)
 
     def test_send_chunk_response_localtimeout(self):
-        client, server = self.setup_two_endpoints(clientMSRPSession=MSRPSession_ZeroTimeout)
-        client, server = client.wait(), server.wait()
+        client, server = self.setup_two_endpoints(clientMSRPSession=MSRPSession_ZeroTimeout).wait_all()
         x = self._make_hello(client)
         response = self.deliver_chunk(client, x)
         assert response.code == 408, response
@@ -141,8 +144,7 @@ class BasicTest(unittest.TestCase):
             raise AssertionError('%s must raise ConnectionDone, returned %r' % (wait_func, result))
 
     def test_close_connection__receive(self):
-        client, server = self.setup_two_endpoints()
-        client, server = client.wait(), server.wait()
+        client, server = self.setup_two_endpoints().wait_all()
         assert isinstance(client, MSRPSession), repr(client)
         client.loseConnection()
         self._test_closed(server.receive_chunk)
