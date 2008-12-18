@@ -1,4 +1,4 @@
-# Copyright (C) 2008 AG Projects. See LICENSE for details 
+# Copyright (C) 2008 AG Projects. See LICENSE for details
 
 from __future__ import with_statement
 from application.system import default_host_ip

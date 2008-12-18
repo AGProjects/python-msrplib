@@ -1,4 +1,4 @@
-# Copyright (C) 2008 AG Projects. See LICENSE for details 
+# Copyright (C) 2008 AG Projects. See LICENSE for details
 
 from __future__ import with_statement
 import sys
@@ -72,16 +72,16 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
     traffic_logger = None
     _new_chunk = True
 
-    def __init__(self, gtransport, queue): 
-        self.gtransport = gtransport 
-        self._queue = queue 
-        protocol.MSRPProtocol.__init__(self) 
+    def __init__(self, gtransport, queue):
+        self.gtransport = gtransport
+        self._queue = queue
+        protocol.MSRPProtocol.__init__(self)
 
-    def connectionMade(self): 
-        self.gtransport.init_transport(self.transport) 
-        del self.gtransport 
-        self.peer = Peer(self._queue) 
-        del self._queue 
+    def connectionMade(self):
+        self.gtransport.init_transport(self.transport)
+        del self.gtransport
+        self.peer = Peer(self._queue)
+        del self._queue
 
     def rawDataReceived(self, data):
         if self.traffic_logger:
@@ -125,7 +125,7 @@ class LocalResponse(object):
 
 Response200OK = LocalResponse(200, "OK")
 Response408Timeout = LocalResponse(408, "Local transaction timed out")
-
+# XXX LocalResponse has the same attributes as MSRPTransactionError
 
 class MSRPSession(GreenTransportBase):
     """An MSRP session that exclusively uses the connection.
@@ -329,7 +329,7 @@ class MSRPSession(GreenTransportBase):
         If no response was received after RESPONSE_TIMEOUT seconds,
         * 408 response is generated if Failure-Report was 'yes' or absent
         * 200 response is generated if Failure-Report was 'partial' or 'no'
-        
+
         Note that it's rather wasteful to provide `event' argument other than None
         for chunks with Failure-Report='no' since it will always fire 30 seconds later
         with 200 result (unless the other party is broken and ignores Failure-Report header)
