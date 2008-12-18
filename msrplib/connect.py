@@ -8,7 +8,7 @@ from eventlet.coros import event
 from eventlet.api import timeout
 
 from msrplib import protocol, MSRPError
-from msrplib.transport import MSRPSession
+from msrplib.transport import MSRPSession, MSRPTransactionError, MSRPBadRequest
 from msrplib.util import random_string
 from msrplib.digest import process_www_authenticate
 
@@ -40,12 +40,14 @@ class MSRPRelaySettings(object):
     def uri_domain(self):
         return protocol.URI(host=self.domain, port=self.port, use_tls=self.use_tls)
 
-class MSRPTimeout(MSRPError):
-    seconds = 10
+class TimeoutMixin(object):
 
     @classmethod
     def timeout(cls):
         return timeout(cls.seconds, cls)
+
+class MSRPTimeout(MSRPError, TimeoutMixin):
+    seconds = 10
 
 class MSRPConnectTimeout(MSRPTimeout):
     pass
@@ -59,8 +61,13 @@ class MSRPIncomingConnectTimeout(MSRPTimeout):
 class MSRPBindSessionTimeout(MSRPTimeout):
     pass
 
-class MSRPRelayAuthError(MSRPError):
+class MSRPRelayAuthError(MSRPTransactionError):
     pass
+
+class MSRPAuthTimeout(MSRPTransactionError, TimeoutMixin):
+    code = 408
+    comment = 'No response to AUTH request'
+    seconds = 30
 
 class ConnectBase(object):
     MSRPSessionClass = MSRPSession
@@ -166,6 +173,16 @@ class AcceptorDirect(ConnectBase):
             msrp.accept_binding(full_remote_path)
         return msrp
 
+def _deliver_chunk(msrp, chunk):
+    msrp.write_chunk(chunk)
+    with MSRPAuthTimeout.timeout():
+        response = msrp._wait_chunk()
+    if response.method is not None:
+        raise MSRPBadRequest
+    if response.transaction_id!=chunk.transaction_id:
+        raise MSRPBadRequest
+    return response
+
 class RelayConnectBase(ConnectBase):
 
     def __init__(self, relay, *args, **kwargs):
@@ -173,24 +190,21 @@ class RelayConnectBase(ConnectBase):
         ConnectBase.__init__(self, *args, **kwargs)
 
     def _relay_connect(self, local_uri):
-        assert not local_uri.port, 'binding outgoing connections is not implemented'
         conn = self._connect(local_uri, self.relay)
         local_uri.port = conn.getHost().port
         msrpdata = protocol.MSRPData(method="AUTH", transaction_id=random_string(12))
         msrpdata.add_header(protocol.ToPathHeader([self.relay.uri_domain]))
         msrpdata.add_header(protocol.FromPathHeader([local_uri]))
-        conn.write_chunk(msrpdata)
-        response = conn._wait_chunk()
+        response = _deliver_chunk(conn, msrpdata)
         if response.code == 401:
             www_authenticate = response.headers["WWW-Authenticate"]
             auth, rsp_auth = process_www_authenticate(self.relay.username, self.relay.password, "AUTH",
                                                       str(self.relay.uri_domain), **www_authenticate.decoded)
             msrpdata.transaction_id = random_string(12)
             msrpdata.add_header(protocol.AuthorizationHeader(auth))
-            conn.write_chunk(msrpdata)
-            response = conn._wait_chunk()
+            response = _deliver_chunk(conn, msrpdata)
         if response.code != 200:
-            raise MSRPRelayAuthError("Failed to reserve session at MSRP relay: %(code)s %(comment)s" % response.__dict__)
+            raise MSRPRelayAuthError(comment=response.comment, code=response.code)
         conn.use_path(list(response.headers["Use-Path"].decoded))
         #print 'Reserved session at MSRP relay %s:%d, Use-Path: %s' % (relaysettings.host, relaysettings.port, conn.local_uri)
         return conn

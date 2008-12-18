@@ -13,11 +13,32 @@ from msrplib.util import random_string
 # need Message-ID and Byte-Range headers in every chunk, because msrprelay fails otherwise
 
 class MSRPTransactionError(MSRPError):
-    pass
+    def __init__(self, comment=None, code=None):
+        if comment is not None:
+            self.comment = comment
+        if code is not None:
+            self.code = code
+        if not hasattr(self, 'code'):
+            raise TypeError("must provide 'code'")
+
+    def __str__(self):
+        try:
+            comment = self.comment
+        except AttributeError:
+            return str(self.code)
+        else:
+            return '%s %s' % (self.code, self.comment)
+
+# XXX from these exception names it's unclear whether it's raised
+# because of an error response from a remote party or it's a locally
+# generated error (-- it's latter)
 
 class MSRPBadRequest(MSRPTransactionError):
     code = 400
     comment = 'Bad Request'
+
+    def __str__(self):
+        return 'Remote party sent bogus data'
 
 class MSRPBadContentType(MSRPTransactionError):
     code = 415
