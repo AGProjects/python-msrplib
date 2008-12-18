@@ -474,9 +474,11 @@ def parse_uri(uri_str):
     return URI(**uri_params)
 
 class URI(object):
+    use_tls = False
 
-    def __init__(self, host, use_tls = False, user = None, port = None, session_id = None, transport = "tcp", parameters = None):
-        self.use_tls = use_tls
+    def __init__(self, host, use_tls=None, user=None, port=None, session_id=None, transport="tcp", parameters=None):
+        if use_tls is not None:
+            self.use_tls = use_tls
         self.user = user
         self.host = host
         self.port = port
