@@ -64,6 +64,7 @@ class MSRPRelayAuthError(MSRPError):
 
 class ConnectBase(object):
     MSRPSessionClass = MSRPSession
+    SRVConnectorClass = None
 
     def __init__(self, *args, **kwargs):
         self.args = args
@@ -80,9 +81,23 @@ class ConnectBase(object):
         if remote_uri.use_tls:
             from gnutls.interfaces.twisted import X509Credentials
             cred = X509Credentials(None, None)
-            msrp = creator.connectTLS(remote_uri.host, remote_uri.port or 2855, cred)
+            connectFuncName = 'connectTLS'
+            connectFuncArgs = (cred, )
+            service = 'msrps'
         else:
-            msrp = creator.connectTCP(remote_uri.host, remote_uri.port or 2855)
+            connectFuncName = 'connectTCP'
+            connectFuncArgs = ()
+            service = 'msrp'
+        if remote_uri.host:
+            args = (remote_uri.host, remote_uri.port or 2855) + connectFuncArgs
+            msrp = getattr(creator, connectFuncName)(*args)
+        else:
+            if not remote_uri.domain:
+                raise ValueError("remote_uri must have either 'host' or 'domain'")
+            msrp = creator.connectSRV(service, remote_uri.domain,
+                                      connectFuncName=connectFuncName,
+                                      connectFuncArgs=connectFuncArgs,
+                                      ConnectorClass=self.SRVConnectorClass)
         return msrp
 
 class ConnectorDirect(ConnectBase):
