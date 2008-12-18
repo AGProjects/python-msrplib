@@ -59,7 +59,7 @@ class MSRPSession_NoResponse(MSRPSession):
 class BasicTest(unittest.TestCase):
     server_relay = None
     client_relay = None
-    client_traffic_logger = TrafficLogger(HeaderLogger_File(prefix='C '))
+    client_traffic_logger = None # TrafficLogger(HeaderLogger_File(prefix='C '))
     server_traffic_logger = None # TrafficLogger(HeaderLogger_File(prefix='S '))
     PER_TEST_TIMEOUT = 30
     RESPONSE_TIMEOUT = 10
