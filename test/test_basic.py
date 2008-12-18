@@ -4,18 +4,32 @@ import unittest
 import new
 
 from twisted.internet.error import ConnectionDone
+from twisted.names.srvconnect import SRVConnector
 from twisted.internet import reactor
 
 from eventlet.api import timeout, exc_after, TimeoutError
 from eventlet.coros import event, JobGroup
 
-from msrplib.connect import MSRPConnectFactory, MSRPAcceptFactory, MSRPRelaySettings
+# this will print stacktraces in all greenlets that had an error
+#from eventlet import coros
+#coros.DEBUG = True
+
+from msrplib.connect import MSRPConnectFactory, MSRPAcceptFactory, MSRPRelaySettings, ConnectBase
 from msrplib import protocol as pr
 from msrplib.trafficlog import TrafficLogger, hook_std_output, HeaderLogger_File
 from msrplib.transport import MSRPSession
 
 # add tell() method to stdout (needed by TrafficLogger)
 hook_std_output()
+
+class NoisySRVConnector(SRVConnector):
+
+    def pickServer(self):
+        host, port = SRVConnector.pickServer(self)
+        print 'Resolved _%s._%s.%s --> %s:%s' % (self.service, self.protocol, self.domain, host, port)
+        return host, port
+
+ConnectBase.SRVConnectorClass = NoisySRVConnector
 
 class TimeoutEvent(event):
     timeout = 10
@@ -162,8 +176,8 @@ options, _args = parser.parse_args()
 
 relays = []
 # SRV:
-#if options.domain is not None:
-#    relays.append(RelaySettings(options.domain, options.username, options.password))
+if options.domain is not None:
+    relays.append(MSRPRelaySettings(options.domain, options.username, options.password))
 # explicit host:
 if options.host is not None:
     assert options.domain is not None
