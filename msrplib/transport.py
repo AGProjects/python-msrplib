@@ -72,14 +72,12 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
     traffic_logger = None
     _new_chunk = True
 
-    def __init__(self, gtransport, queue):
-        self.gtransport = gtransport
+    def __init__(self, queue):
         self._queue = queue
         protocol.MSRPProtocol.__init__(self)
 
     def connectionMade(self):
-        self.gtransport.init_transport(self.transport)
-        del self.gtransport
+        self._queue.send(self.transport)
         self.peer = Peer(self._queue)
         del self._queue
 
