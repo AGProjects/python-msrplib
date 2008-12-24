@@ -107,6 +107,9 @@ class ConnectBase(object):
                                       ConnectorClass=self.SRVConnectorClass)
         return msrp
 
+    def cleanup(self):
+        pass
+
 class ConnectorDirect(ConnectBase):
 
     BOGUS_LOCAL_PORT = 12345
@@ -166,12 +169,18 @@ class AcceptorDirect(ConnectBase):
             with MSRPIncomingConnectTimeout.timeout():
                 msrp = self._accept()
         finally:
-            self.listener.stopListening()
-            del self.listener
-            del self.transport_event
+            self.cleanup()
         with MSRPBindSessionTimeout.timeout():
             msrp.accept_binding(full_remote_path)
         return msrp
+
+    def cleanup(self):
+        try:
+            self.listener.stopListening()
+            del self.listener
+            del self.transport_event
+        except AttributeError:
+            pass
 
 def _deliver_chunk(msrp, chunk):
     msrp.write_chunk(chunk)
@@ -213,13 +222,20 @@ class RelayConnectBase(ConnectBase):
         with MSRPRelayConnectTimeout.timeout():
             return self._relay_connect(local_uri)
 
-class ConnectorRelay(RelayConnectBase):
-
     def prepare(self, local_uri=None):
         if local_uri is None:
             local_uri = self.generate_local_uri()
         self.msrp = self._relay_connect_timeout(local_uri)
         return self.msrp.full_local_path
+
+    def cleanup(self):
+        try:
+            self.msrp.loseConnection()
+            del self.msrp
+        except AttributeError:
+            pass
+
+class ConnectorRelay(RelayConnectBase):
 
     def complete(self, full_remote_path):
         try:
@@ -230,12 +246,6 @@ class ConnectorRelay(RelayConnectBase):
             del self.msrp
 
 class AcceptorRelay(RelayConnectBase):
-
-    def prepare(self, local_uri=None):
-        if local_uri is None:
-            local_uri = self.generate_local_uri()
-        self.msrp = self._relay_connect_timeout(local_uri)
-        return self.msrp.full_local_path
 
     def complete(self, full_remote_path):
         try:
