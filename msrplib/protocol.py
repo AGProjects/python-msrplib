@@ -4,6 +4,8 @@ from collections import deque
 import re
 
 from twisted.protocols.basic import LineReceiver
+from application.system import default_host_ip
+from msrplib.util import random_string
 
 class MSRPError(Exception):
     pass
@@ -473,15 +475,55 @@ def parse_uri(uri_str):
         raise ParsingError('Invalid transport in URI, only "tcp" is accepted: %s' % uri_params["transport"])
     return URI(**uri_params)
 
-class URI(object):
-    use_tls = False
+class ConnectInfo(object):
+    host = None
+    use_tls = True
+    port = 2855
 
-    def __init__(self, host, use_tls=None, user=None, port=None, session_id=None, transport="tcp", parameters=None):
+    def __init__(self, host=None, use_tls=None, port=None, credentials=None):
+        if host is not None:
+            self.host = host
         if use_tls is not None:
             self.use_tls = use_tls
+        if port is not None:
+            self.port = port
+        self.credentials = credentials
+        if self.use_tls and self.credentials is None:
+            from gnutls.interfaces.twisted import X509Credentials
+            self.credentials = X509Credentials(None, None)
+
+    @property
+    def scheme(self):
+        if self.use_tls:
+            return 'msrps'
+        else:
+            return 'msrp'
+
+    @property
+    def protocol_name(self):
+        if self.use_tls:
+            return 'TLS'
+        else:
+            return 'TCP'
+
+    @property
+    def protocolArgs(self):
+        if self.use_tls:
+            return (self.credentials,)
+        return ()
+
+
+# use TLS_URI and TCP_URI ?
+class URI(ConnectInfo):
+    host = default_host_ip
+
+    def __init__(self, host=None, use_tls=None, user=None, port=None,
+                 session_id=None, transport="tcp", parameters=None,
+                 credentials=None):
+        ConnectInfo.__init__(self, host, use_tls=use_tls, port=port, credentials=credentials)
         self.user = user
-        self.host = host
-        self.port = port
+        if session_id is None:
+            session_id=random_string(12)
         self.session_id = session_id
         self.transport = transport
         if parameters is None:

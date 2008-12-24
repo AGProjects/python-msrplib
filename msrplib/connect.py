@@ -1,7 +1,6 @@
 # Copyright (C) 2008 AG Projects. See LICENSE for details
 
 from __future__ import with_statement
-from application.system import default_host_ip
 
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet.coros import event
@@ -14,19 +13,14 @@ from msrplib.digest import process_www_authenticate
 
 __all__ = ['MSRPRelaySettings', 'MSRPConnectFactory', 'MSRPAcceptFactory']
 
-class MSRPRelaySettings(object):
-    port = 2855
+class MSRPRelaySettings(protocol.ConnectInfo):
     use_tls = True
 
-    def __init__(self, domain, username, password, host=None, port=None, use_tls=None):
+    def __init__(self, domain, username, password, host=None, port=None, use_tls=None, credentials=None):
+        protocol.ConnectInfo.__init__(self, host, use_tls=use_tls, port=port, credentials=credentials)
         self.domain = domain
         self.username = username
         self.password = password
-        self.host = host
-        if port is not None:
-            self.port = port
-        if use_tls is not None:
-            self.use_tls = use_tls
 
     def __repr__(self):
         params = [self.domain, self.username, self.password, self.host, self.port]
@@ -38,7 +32,7 @@ class MSRPRelaySettings(object):
 
     @property
     def uri_domain(self):
-        return protocol.URI(host=self.domain, port=self.port, use_tls=self.use_tls)
+        return protocol.URI(host=self.domain, port=self.port, use_tls=self.use_tls, session_id='')
 
 class TimeoutMixin(object):
 
@@ -80,28 +74,20 @@ class ConnectBase(object):
             self.MSRPSessionClass = self.kwargs.pop('MSRPSessionClass')
 
     def generate_local_uri(self, port=0):
-        return protocol.URI(host=default_host_ip, port=port, session_id=random_string(12))
+        return protocol.URI(port=port)
 
     def _connect(self, local_uri, remote_uri):
         from twisted.internet import reactor
         creator = GreenClientCreator(reactor, self.MSRPSessionClass, local_uri, *self.args, **self.kwargs)
-        if remote_uri.use_tls:
-            from gnutls.interfaces.twisted import X509Credentials
-            cred = X509Credentials(None, None)
-            connectFuncName = 'connectTLS'
-            connectFuncArgs = (cred, )
-            service = 'msrps'
-        else:
-            connectFuncName = 'connectTCP'
-            connectFuncArgs = ()
-            service = 'msrp'
+        connectFuncName = 'connect' + remote_uri.protocol_name
+        connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
             args = (remote_uri.host, remote_uri.port or 2855) + connectFuncArgs
             msrp = getattr(creator, connectFuncName)(*args)
         else:
             if not remote_uri.domain:
                 raise ValueError("remote_uri must have either 'host' or 'domain'")
-            msrp = creator.connectSRV(service, remote_uri.domain,
+            msrp = creator.connectSRV(remote_uri.scheme, remote_uri.domain,
                                       connectFuncName=connectFuncName,
                                       connectFuncArgs=connectFuncArgs,
                                       ConnectorClass=self.SRVConnectorClass)
@@ -135,12 +121,9 @@ class AcceptorDirect(ConnectBase):
         # QQQ use ip from local_uri as binding interface?
         from twisted.internet import reactor
         factory = SpawnFactory(handler, self.MSRPSessionClass, local_uri, *self.args, **self.kwargs)
-        if local_uri.use_tls is False:
-            port = reactor.listenTCP(local_uri.port or 0, factory)
-        else:
-            from gnutls.interfaces.twisted import X509Credentials
-            cred = X509Credentials(None, None)
-            port = reactor.listenTLS(local_uri.port or 0, factory, cred)
+        listenFuncName = 'listen' + local_uri.protocol_name
+        listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
+        port = getattr(reactor, listenFuncName)(*listenFuncArgs)
         return local_uri, port
 
     def prepare(self, local_uri=None):
