@@ -55,6 +55,7 @@ class MSRPSession_ZeroTimeout(MSRPSession):
 class MSRPSession_NoResponse(MSRPSession):
     count = 0
     def write_SEND_response(self, chunk, code, comment):
+        # do send response to the first chunk, otherwise binding won't happen
         if not self.count:
             self.count += 1
             MSRPSession.write_SEND_response(self, chunk, code, comment)
@@ -67,20 +68,25 @@ class BasicTest(unittest.TestCase):
     PER_TEST_TIMEOUT = 30
     RESPONSE_TIMEOUT = 10
     debug = True
+    use_tls = False
+    server_credentials = None
 
     def setup_two_endpoints(self, clientMSRPSession=MSRPSession, serverMSRPSession=MSRPSession):
         server_path = TimeoutEvent()
         client_path = TimeoutEvent()
 
+        client_uri = pr.URI(use_tls=self.use_tls)
+        server_uri = pr.URI(use_tls=self.use_tls, credentials=self.server_credentials)
+
         def client():
             msrp = MSRPConnectFactory.new(self.client_relay, self.client_traffic_logger,
                                           MSRPSessionClass=clientMSRPSession)
-            return _connect_msrp(client_path, server_path, msrp)
+            return _connect_msrp(client_path, server_path, msrp, client_uri)
 
         def server():
             msrp = MSRPAcceptFactory.new(self.server_relay, self.server_traffic_logger,
                                          MSRPSessionClass=serverMSRPSession)
-            return _connect_msrp(server_path, client_path, msrp)
+            return _connect_msrp(server_path, client_path, msrp, server_uri)
 
         group = JobGroup()
         group.client = group.spawn_new(client)
@@ -167,6 +173,15 @@ class BasicTest(unittest.TestCase):
         self._test_closed(server.receive_chunk)
         self._test_closed(server.send_chunk, self._make_hello(server))
 
+from gnutls.crypto import X509PrivateKey, X509Certificate
+from gnutls.interfaces.twisted import X509Credentials
+
+class BasicTestTLS(BasicTest):
+    use_tls = True
+    cert = X509Certificate(open('valid.crt').read())
+    key = X509PrivateKey(open('valid.key').read())
+    server_credentials = X509Credentials(cert, key)
+
 
 from optparse import OptionParser
 parser = OptionParser()
@@ -194,7 +209,15 @@ for relay in relays:
     configs.append({'server_relay': relay, 'client_relay': relay})
 
 def get_config_name(config):
-    return '_'.join(k for (k, v) in config.items() if v is not None)
+    result = []
+    for name, relay in config.items():
+        if relay is not None:
+            x = name
+            print  name, relay.host
+            if relay.host is None:
+                x += '_srv'
+            result.append(x)
+    return '_'.join(result)
 
 def make_tests_for_other_configurations(TestClass):
     klass = TestClass.__name__
