@@ -4,6 +4,7 @@ from __future__ import with_statement
 import sys
 
 from eventlet.coros import Job, queue
+from eventlet import coros
 from eventlet.twistedutil.protocol import GreenTransportBase
 from eventlet.hubs.twistedr import callLater
 
@@ -275,11 +276,10 @@ class MSRPSession(GreenTransportBase):
                 return chunk
 
     def _reader(self, raise_on_error=False):
-        """Wait forever for new chunks.
+        """Wait forever for new chunks. Send the good ones to self.incoming queue.
 
-        Send the good ones to self.incoming queue.
-        Pop and notify an event in self.expected_responses
-        when transaction response is received.
+        If a response to previously sent chunk is received, pop the corresponding
+        event from self.expected_responses and send the response there.
         """
         try:
             while True:
@@ -303,9 +303,10 @@ class MSRPSession(GreenTransportBase):
                         self.write_SEND_response(chunk, 200, "OK")
                         self.incoming.send(chunk)
                 elif chunk.method=='REPORT':
+                    # QQQ deliver to incoming as well
                     pass
                 else:
-                    pass # respond 506
+                    pass # QQQ respond 506
         except:
             self.incoming.send_exception(*sys.exc_info())
             raise
@@ -337,9 +338,9 @@ class MSRPSession(GreenTransportBase):
         assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
         if event is not None:
             # since reader is in another greenlet and write_chunk may block,
-            # let's setup ResponseEventTimer before write_chunk() call, just in case
-            event_timer = [event, None]
-            self.expected_responses[id] = event_timer
+            # let's setup response's event and timer before write_chunk() call, just in case
+            event_and_timer = [event, None]
+            self.expected_responses[id] = event_and_timer
         try:
             self.write_chunk(chunk)
             # must start timer after data was submitted to the OS. However, twisted's transport
@@ -355,7 +356,17 @@ class MSRPSession(GreenTransportBase):
                 timeout_error = Response408Timeout if chunk.failure_report=='yes' else Response200OK
                 from twisted.internet import reactor
                 timer = callLater(reactor, self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
-                event_timer[1] = timer
+                event_and_timer[1] = timer
+
+    def deliver_chunk(self, chunk, event=None):
+        """Send chunk, return the transaction response.
+        Return None immediatelly if chunk's Failure-Report is 'no'.
+        """
+        if chunk.failure_report!='no' and event is None:
+            event = coros.event()
+        self.send_chunk(chunk, event)
+        if event is not None:
+            return event.wait()
 
     def _response_timeout(self, id, timeout_error):
         try:
@@ -417,5 +428,10 @@ class MSRPSession(GreenTransportBase):
     def send_message(self, msg, content_type):
         chunk = self.make_message(msg, content_type)
         self.send_chunk(chunk)
+        return chunk
+
+    def deliver_message(self, msg, content_type):
+        chunk = self.make_message(msg, content_type)
+        self.deliver_chunk(chunk)
         return chunk
 
