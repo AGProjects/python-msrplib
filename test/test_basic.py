@@ -38,13 +38,16 @@ class TimeoutEvent(event):
         with timeout(self.timeout):
             return event.wait(self)
 
-def _connect_msrp(local_event, remote_event, msrp):
-    full_local_path = msrp.prepare()
-    local_event.send(full_local_path)
-    full_remote_path = remote_event.wait()
-    result = msrp.complete(full_remote_path)
-    assert isinstance(result, MSRPSession), repr(result)
-    return result
+def _connect_msrp(local_event, remote_event, msrp, local_uri):
+    full_local_path = msrp.prepare(local_uri)
+    try:
+        local_event.send(full_local_path)
+        full_remote_path = remote_event.wait()
+        result = msrp.complete(full_remote_path)
+        assert isinstance(result, MSRPSession), repr(result)
+        return result
+    finally:
+        msrp.cleanup()
 
 class MSRPSession_ZeroTimeout(MSRPSession):
     RESPONSE_TIMEOUT = 0
