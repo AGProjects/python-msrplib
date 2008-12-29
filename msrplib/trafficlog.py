@@ -84,6 +84,10 @@ class TrafficLogger:
     def __init__(self, header_logger):
         self.header_logger = header_logger
 
+    @classmethod
+    def to_file(cls, *args, **kwargs):
+        return cls(HeaderLogger_File(*args, **kwargs))
+
     def report_out(self, data, transport, new_chunk=False):
         try:
             header = transport._header_out
@@ -113,7 +117,7 @@ class TrafficLogger:
 
 class FileWithTell(object):
 
-    def __init__(self, original=sys.stdout):
+    def __init__(self, original):
         self.original = original
         self.writecount = 0
 
