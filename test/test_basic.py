@@ -8,16 +8,13 @@ from twisted.names.srvconnect import SRVConnector
 from twisted.internet import reactor
 
 from eventlet.api import timeout, exc_after, TimeoutError
-from eventlet.coros import event, JobGroup
-
-# this will print stacktraces in all greenlets that had an error
-#from eventlet import coros
-#coros.DEBUG = True
+from eventlet.coros import event
+from eventlet import proc
 
 from msrplib.connect import MSRPConnectFactory, MSRPAcceptFactory, MSRPRelaySettings, ConnectBase
 from msrplib import protocol as pr
 from msrplib.trafficlog import TrafficLogger, hook_std_output, HeaderLogger_File
-from msrplib.transport import MSRPSession
+from msrplib.transport import MSRPTransport
 
 # add tell() method to stdout (needed by TrafficLogger)
 hook_std_output()
@@ -44,34 +41,34 @@ def _connect_msrp(local_event, remote_event, msrp, local_uri):
         local_event.send(full_local_path)
         full_remote_path = remote_event.wait()
         result = msrp.complete(full_remote_path)
-        assert isinstance(result, MSRPSession), repr(result)
+        assert isinstance(result, MSRPTransport), repr(result)
         return result
     finally:
         msrp.cleanup()
 
-class MSRPSession_ZeroTimeout(MSRPSession):
+class MSRPTransport_ZeroTimeout(MSRPTransport):
     RESPONSE_TIMEOUT = 0
 
-class MSRPSession_NoResponse(MSRPSession):
+class MSRPTransport_NoResponse(MSRPTransport):
     count = 0
     def write_SEND_response(self, chunk, code, comment):
         # do send response to the first chunk, otherwise binding won't happen
         if not self.count:
             self.count += 1
-            MSRPSession.write_SEND_response(self, chunk, code, comment)
+            MSRPTransport.write_SEND_response(self, chunk, code, comment)
 
 class BasicTest(unittest.TestCase):
     server_relay = None
     client_relay = None
-    client_traffic_logger = None # TrafficLogger(HeaderLogger_File(prefix='C '))
-    server_traffic_logger = None # TrafficLogger(HeaderLogger_File(prefix='S '))
+    client_traffic_logger = None # TrafficLogger.to_file(prefix='C ')
+    server_traffic_logger = None # TrafficLogger.to_file(prefix='S ')
     PER_TEST_TIMEOUT = 30
     RESPONSE_TIMEOUT = 10
     debug = True
     use_tls = False
     server_credentials = None
 
-    def setup_two_endpoints(self, clientMSRPSession=MSRPSession, serverMSRPSession=MSRPSession):
+    def setup_two_endpoints(self, clientMSRPTransport=MSRPTransport, serverMSRPTransport=MSRPTransport):
         server_path = TimeoutEvent()
         client_path = TimeoutEvent()
 
@@ -80,18 +77,17 @@ class BasicTest(unittest.TestCase):
 
         def client():
             msrp = MSRPConnectFactory.new(self.client_relay, self.client_traffic_logger,
-                                          MSRPSessionClass=clientMSRPSession)
+                                          MSRPTransportClass=clientMSRPTransport)
             return _connect_msrp(client_path, server_path, msrp, client_uri)
 
         def server():
             msrp = MSRPAcceptFactory.new(self.server_relay, self.server_traffic_logger,
-                                         MSRPSessionClass=serverMSRPSession)
+                                         MSRPTransportClass=serverMSRPTransport)
             return _connect_msrp(server_path, client_path, msrp, server_uri)
 
-        group = JobGroup()
-        group.client = group.spawn_new(client)
-        group.server = group.spawn_new(server)
-        return group
+        client = proc.spawn_link_raise(client)
+        server = proc.spawn_link_raise(server)
+        return client, server
 
     def setUp(self):
         self.timer = exc_after(self.PER_TEST_TIMEOUT, TimeoutError('per test timeout expired'))
@@ -139,8 +135,7 @@ class BasicTest(unittest.TestCase):
         self.assertSameData(x, y)
 
     def test_send_chunk(self):
-        jobs = self.setup_two_endpoints()
-        client, server = jobs.wait_all()
+        client, server = proc.wait(self.setup_two_endpoints())
         #client = client.wait()
         #server = server.wait()
         self._send_chunk(client, server)
@@ -148,7 +143,7 @@ class BasicTest(unittest.TestCase):
         #self.assertNoIncoming(0.1, client, server)
 
     def test_send_chunk_response_localtimeout(self):
-        client, server = self.setup_two_endpoints(clientMSRPSession=MSRPSession_ZeroTimeout).wait_all()
+        client, server = proc.wait(self.setup_two_endpoints(clientMSRPTransport=MSRPTransport_ZeroTimeout))
         x = self._make_hello(client)
         response = self.deliver_chunk(client, x)
         assert response.code == 408, response
@@ -167,8 +162,8 @@ class BasicTest(unittest.TestCase):
             raise AssertionError('%s must raise ConnectionDone, returned %r' % (wait_func, result))
 
     def test_close_connection__receive(self):
-        client, server = self.setup_two_endpoints().wait_all()
-        assert isinstance(client, MSRPSession), repr(client)
+        client, server = proc.wait(self.setup_two_endpoints())
+        assert isinstance(client, MSRPTransport), repr(client)
         client.loseConnection()
         self._test_closed(server.receive_chunk)
         self._test_closed(server.send_chunk, self._make_hello(server))
@@ -190,7 +185,14 @@ parser.add_option('--username')
 parser.add_option('--password')
 parser.add_option('--host')
 parser.add_option('--port', default=2855)
+parser.add_option('--log-client', action='store_true', default=False)
+parser.add_option('--log-server', action='store_true', default=False)
 options, _args = parser.parse_args()
+
+if options.log_client:
+    BasicTest.client_traffic_logger = TrafficLogger.to_file(prefix='C ')
+if options.log_server:
+    BasicTest.server_traffic_logger = TrafficLogger.to_file(prefix='S ')
 
 relays = []
 # SRV:

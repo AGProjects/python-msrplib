@@ -2,9 +2,9 @@
 
 from __future__ import with_statement
 import sys
+from twisted.internet.error import ConnectionClosed
 
-from eventlet.coros import Job, queue
-from eventlet import coros
+from eventlet import coros, proc
 from eventlet.twistedutil.protocol import GreenTransportBase
 from eventlet.hubs.twistedr import callLater
 
@@ -126,7 +126,7 @@ Response200OK = LocalResponse(200, "OK")
 Response408Timeout = LocalResponse(408, "Local transaction timed out")
 # XXX LocalResponse has the same attributes as MSRPTransactionError
 
-class MSRPSession(GreenTransportBase):
+class MSRPTransport(GreenTransportBase):
     """An MSRP session that exclusively uses the connection.
 
     QQQ: there's 1-to-1 mapping between session and connection because
@@ -143,7 +143,9 @@ class MSRPSession(GreenTransportBase):
     RESPONSE_TIMEOUT = 30
     debug = True
 
-    def __init__(self, local_uri, traffic_logger=None, allowed_content_types=None, debug=None):
+    def __init__(self, local_uri, traffic_logger=None,
+                 allowed_content_types=None, debug=None,
+                 incoming=None):
         if not isinstance(local_uri, protocol.URI):
             raise TypeError('Not MSRP URI instance: %r' % local_uri)
         # The following members define To-Path and From-Path headers as following:
@@ -163,7 +165,9 @@ class MSRPSession(GreenTransportBase):
             self.debug = debug
         self.expected_responses = {}
         self.reader_job = None
-        self.incoming = queue(1)
+        if incoming is None:
+            incoming = coros.queue(0)
+        self.incoming = incoming
         #self.chunks = {} # maps message_id to StringIO instance that represents contents of the message
 
     def next_host(self):
@@ -201,6 +205,10 @@ class MSRPSession(GreenTransportBase):
         p = GreenTransportBase.build_protocol(self)
         p.traffic_logger = self.traffic_logger
         return p
+
+    def loseConnection(self):
+        # XXX break the current chunk
+        self.transport.loseConnection()
 
     def write(self, data):
         if self.traffic_logger:
@@ -250,7 +258,7 @@ class MSRPSession(GreenTransportBase):
         Send the following responses in appropriate situations:
         * 400 Bad Request
         * 481 No Such Session Here
-        Then continue receiving if raise_on_error is False, otherwise an exception is raised.
+        then continue receiving if raise_on_error is False, otherwise an exception is raised.
         """
         while True:
             try:
@@ -275,10 +283,13 @@ class MSRPSession(GreenTransportBase):
                             continue
                 return chunk
 
+    def _send_to_incoming(self, chunk):
+        self.incoming.send(chunk)
+
     def _reader(self, raise_on_error=False):
         """Wait forever for new chunks. Send the good ones to self.incoming queue.
 
-        If a response to previously sent chunk is received, pop the corresponding
+        If a response to a previously sent chunk is received, pop the corresponding
         event from self.expected_responses and send the response there.
         """
         try:
@@ -301,21 +312,26 @@ class MSRPSession(GreenTransportBase):
                             raise
                     else:
                         self.write_SEND_response(chunk, 200, "OK")
-                        self.incoming.send(chunk)
+                        self._send_to_incoming(chunk)
                 elif chunk.method=='REPORT':
                     # QQQ deliver to incoming as well
                     pass
                 else:
                     pass # QQQ respond 506
-        except:
-            self.incoming.send_exception(*sys.exc_info())
-            raise
+        except ConnectionClosed, ex:
+            return ex
+
+    def poll_error(self):
+        error = self.reader_job.poll()
+        if isinstance(error, ConnectionClosed):
+            raise error
 
     def receive_chunk(self):
-        if self.reader_job:
-            return self.incoming.wait()
-        else:
-            self.reader_job.poll() # re-raise the exception that killed reader
+        try:
+            with self.reader_job:
+                return self.incoming.wait()
+        except proc.LinkedCompleted:
+            self.poll_error()
 
     def send_chunk(self, chunk, event=None):
         """Send `chunk'. Report the result via `event'.
@@ -333,7 +349,7 @@ class MSRPSession(GreenTransportBase):
         for chunks with Failure-Report='no' since it will always fire 30 seconds later
         with 200 result (unless the other party is broken and ignores Failure-Report header)
         """
-        self.reader_job.poll() # re-raise the exception that killed reader
+        self.poll_error()
         id = chunk.transaction_id
         assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
         if event is not None:
@@ -410,15 +426,15 @@ class MSRPSession(GreenTransportBase):
         response = self._wait_chunk()
         if response.code != 200:
             raise MSRPSessionError('Cannot bind session: %s' % response)
-        self.reader_job = Job.spawn_new(self._reader, self.debug)
+        self.reader_job = proc.spawn(self._reader, self.debug)
 
     def accept_binding(self, full_remote_path):
         self._set_full_remote_path(full_remote_path)
         chunk = self._wait_chunk_respond_errors(raise_on_error=True)
         self.write_SEND_response(chunk, 200, "OK")
         if 'Content-Type' in chunk.headers or len(chunk.data)>0:
-            self.incoming.send(chunk)
-        self.reader_job = Job.spawn_new(self._reader, self.debug)
+            self._send_to_incoming(chunk)
+        self.reader_job = proc.spawn(self._reader, self.debug)
 
     def make_message(self, msg, content_type):
         chunk = self.make_chunk(data=msg)

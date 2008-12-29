@@ -2,12 +2,14 @@
 
 from __future__ import with_statement
 
+from twisted.internet.address import IPv4Address
+
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet.coros import event
 from eventlet.api import timeout
 
 from msrplib import protocol, MSRPError
-from msrplib.transport import MSRPSession, MSRPTransactionError, MSRPBadRequest
+from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest
 from msrplib.util import random_string
 from msrplib.digest import process_www_authenticate
 
@@ -64,21 +66,21 @@ class MSRPAuthTimeout(MSRPTransactionError, TimeoutMixin):
     seconds = 30
 
 class ConnectBase(object):
-    MSRPSessionClass = MSRPSession
+    MSRPTransportClass = MSRPTransport
     SRVConnectorClass = None
 
     def __init__(self, *args, **kwargs):
         self.args = args
         self.kwargs = kwargs
-        if 'MSRPSessionClass' in kwargs:
-            self.MSRPSessionClass = self.kwargs.pop('MSRPSessionClass')
+        if 'MSRPTransportClass' in kwargs:
+            self.MSRPTransportClass = self.kwargs.pop('MSRPTransportClass')
 
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
 
     def _connect(self, local_uri, remote_uri):
         from twisted.internet import reactor
-        creator = GreenClientCreator(reactor, self.MSRPSessionClass, local_uri, *self.args, **self.kwargs)
+        creator = GreenClientCreator(reactor, self.MSRPTransportClass, local_uri, *self.args, **self.kwargs)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
@@ -123,7 +125,7 @@ class AcceptorDirect(ConnectBase):
     def _listen(self, local_uri, handler):
         # QQQ use ip from local_uri as binding interface?
         from twisted.internet import reactor
-        factory = SpawnFactory(handler, self.MSRPSessionClass, local_uri, *self.args, **self.kwargs)
+        factory = SpawnFactory(handler, self.MSRPTransportClass, local_uri, *self.args, **self.kwargs)
         listenFuncName = 'listen' + local_uri.protocol_name
         listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
         port = getattr(reactor, listenFuncName)(*listenFuncArgs)
@@ -152,7 +154,7 @@ class AcceptorDirect(ConnectBase):
 
     def complete(self, full_remote_path):
         """Accept an incoming MSRP connection and bind it.
-        Return MSRPSession instance.
+        Return MSRPTransport instance.
         """
         try:
             with MSRPIncomingConnectTimeout.timeout():
