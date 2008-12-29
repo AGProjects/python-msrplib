@@ -106,6 +106,9 @@ class ConnectorDirect(ConnectBase):
         self.local_uri = local_uri
         return [self.local_uri]
 
+    def getHost(self):
+        return IPv4Address('TCP', '0.0.0.0', 0)
+
     def complete(self, full_remote_path):
         with MSRPConnectTimeout.timeout():
             msrp = self._connect(self.local_uri, full_remote_path[0])
@@ -140,6 +143,9 @@ class AcceptorDirect(ConnectBase):
         # QQQ update local_uri.host as well?
         local_uri.port = self.listener.getHost().port
         return [local_uri]
+
+    def getHost(self):
+        return self.listener.getHost()
 
     def _accept(self):
         return self.transport_event.wait()
@@ -210,6 +216,9 @@ class RelayConnectBase(ConnectBase):
             local_uri = self.generate_local_uri()
         self.msrp = self._relay_connect_timeout(local_uri)
         return self.msrp.full_local_path
+
+    def getHost(self):
+        return self.msrp.getHost()
 
     def cleanup(self):
         try:
