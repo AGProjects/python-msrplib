@@ -34,7 +34,7 @@ class MSRPRelaySettings(protocol.ConnectInfo):
 
     @property
     def uri_domain(self):
-        return protocol.URI(host=self.domain, port=self.port, use_tls=self.use_tls, session_id='')
+       return protocol.URI(host=self.domain, port=self.port, use_tls=self.use_tls, session_id='')
 
 class TimeoutMixin(object):
 
