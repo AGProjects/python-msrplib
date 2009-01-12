@@ -4,7 +4,7 @@ from __future__ import with_statement
 import sys
 from twisted.internet.error import ConnectionClosed
 
-from eventlet import coros, proc
+from eventlet import api, coros, proc
 from eventlet.twistedutil.protocol import GreenTransportBase
 from eventlet.hubs.twistedr import callLater
 
@@ -322,14 +322,17 @@ class MSRPTransport(GreenTransportBase):
             return ex
 
     def poll_error(self):
-        error = self.reader_job.poll()
+        error = self.reader_job.wait(timeout=0)
         if isinstance(error, ConnectionClosed):
             raise error
 
     def receive_chunk(self):
         try:
-            with self.reader_job:
+            self.reader_job.link()
+            try:
                 return self.incoming.wait()
+            finally:
+                self.reader_job.unlink()
         except proc.LinkedCompleted:
             self.poll_error()
 
@@ -370,8 +373,7 @@ class MSRPTransport(GreenTransportBase):
         else:
             if event is not None:
                 timeout_error = Response408Timeout if chunk.failure_report=='yes' else Response200OK
-                from twisted.internet import reactor
-                timer = callLater(reactor, self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
+                timer = api.get_hub().schedule_call_global(self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
                 event_and_timer[1] = timer
 
     def deliver_chunk(self, chunk, event=None):

@@ -85,8 +85,8 @@ class BasicTest(unittest.TestCase):
                                          MSRPTransportClass=serverMSRPTransport)
             return _connect_msrp(server_path, client_path, msrp, server_uri)
 
-        client = proc.spawn_link_raise(client)
-        server = proc.spawn_link_raise(server)
+        client = proc.spawn_link_exception(client)
+        server = proc.spawn_link_exception(server)
         return client, server
 
     def setUp(self):
@@ -135,7 +135,7 @@ class BasicTest(unittest.TestCase):
         self.assertSameData(x, y)
 
     def test_send_chunk(self):
-        client, server = proc.wait(self.setup_two_endpoints())
+        client, server = proc.waitall(self.setup_two_endpoints())
         #client = client.wait()
         #server = server.wait()
         self._send_chunk(client, server)
@@ -143,7 +143,7 @@ class BasicTest(unittest.TestCase):
         #self.assertNoIncoming(0.1, client, server)
 
     def test_send_chunk_response_localtimeout(self):
-        client, server = proc.wait(self.setup_two_endpoints(clientMSRPTransport=MSRPTransport_ZeroTimeout))
+        client, server = proc.waitall(self.setup_two_endpoints(clientMSRPTransport=MSRPTransport_ZeroTimeout))
         x = self._make_hello(client)
         response = self.deliver_chunk(client, x)
         assert response.code == 408, response
@@ -162,7 +162,7 @@ class BasicTest(unittest.TestCase):
             raise AssertionError('%s must raise ConnectionDone, returned %r' % (wait_func, result))
 
     def test_close_connection__receive(self):
-        client, server = proc.wait(self.setup_two_endpoints())
+        client, server = proc.waitall(self.setup_two_endpoints())
         assert isinstance(client, MSRPTransport), repr(client)
         client.loseConnection()
         self._test_closed(server.receive_chunk)
