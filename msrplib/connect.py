@@ -24,6 +24,12 @@ class MSRPRelaySettings(protocol.ConnectInfo):
         self.username = username
         self.password = password
 
+    def __str__(self):
+        result = "MSRPRelay %s://%s" % (self.scheme, self.host or self.domain)
+        if self.port:
+            result += ':%s' % self.port
+        return result
+
     def __repr__(self):
         params = [self.domain, self.username, self.password, self.host, self.port]
         if params[-1] is None:
