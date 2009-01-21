@@ -322,7 +322,7 @@ class MSRPTransport(GreenTransportBase):
             return ex
 
     def poll_error(self):
-        error = self.reader_job.wait(timeout=0)
+        error = self.reader_job.wait(0, None)
         if isinstance(error, ConnectionClosed):
             raise error
 
