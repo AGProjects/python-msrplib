@@ -4,6 +4,8 @@ from __future__ import with_statement
 import sys
 from twisted.internet.error import ConnectionClosed
 
+from gnutls.errors import GNUTLSError
+
 from eventlet import api, coros, proc
 from eventlet.twistedutil.protocol import GreenTransportBase
 from eventlet.hubs.twistedr import callLater
@@ -12,6 +14,8 @@ from msrplib import protocol, MSRPError
 from msrplib.util import random_string
 
 # need Message-ID and Byte-Range headers in every chunk, because msrprelay fails otherwise
+
+ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
 
 class MSRPTransactionError(MSRPError):
     def __init__(self, comment=None, code=None):
@@ -318,12 +322,12 @@ class MSRPTransport(GreenTransportBase):
                     pass
                 else:
                     pass # QQQ respond 506
-        except ConnectionClosed, ex:
+        except ConnectionClosedErrors, ex:
             return ex
 
     def poll_error(self):
         error = self.reader_job.wait(0, None)
-        if isinstance(error, ConnectionClosed):
+        if isinstance(error, BaseException):
             raise error
 
     def receive_chunk(self):
