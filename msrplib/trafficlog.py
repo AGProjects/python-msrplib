@@ -1,7 +1,7 @@
 import sys
 import datetime
+from twisted.internet.error import ConnectionDone
 
-# QQQ not used by the library, only by tests
 
 class HeaderLogger:
     """
@@ -141,10 +141,11 @@ class StateLogger:
         self._write(msg)
 
     def report_disconnected(self, transport, reason):
-        msg = '%sClosed connection to %s:%s (%s)' % (self.prefix,
-                                                     transport.getPeer().host,
-                                                     transport.getPeer().port,
-                                                     reason.getErrorMessage())
+        msg = '%sClosed connection to %s:%s' % (self.prefix,
+                                                transport.getPeer().host,
+                                                transport.getPeer().port)
+        if not isinstance(reason.value, ConnectionDone):
+            msg += ' (%s)' % reason.getErrorMessage()
         self._write(msg)
 
     def report_listen(self, local_uri, port):
