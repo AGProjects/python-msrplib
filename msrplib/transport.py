@@ -324,6 +324,8 @@ class MSRPTransport(GreenTransportBase):
                     pass # QQQ respond 506
         except ConnectionClosedErrors, ex:
             return ex
+        finally:
+            self.loseConnection()
 
     def poll_error(self):
         error = self.reader_job.wait(0, None)
