@@ -332,8 +332,9 @@ class MSRPTransport(GreenTransportBase):
             try:
                 return self.incoming.wait()
             finally:
+                # not good, will screw up caller's link to the current greenlet if he had one
                 self.reader_job.unlink()
-        except proc.LinkedCompleted:
+        except proc.LinkedExited:
             self.poll_error()
 
     def send_chunk(self, chunk, event=None):
