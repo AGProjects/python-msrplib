@@ -1,14 +1,12 @@
 # Copyright (C) 2008 AG Projects. See LICENSE for details
 
 from __future__ import with_statement
-import sys
 from twisted.internet.error import ConnectionClosed
 
 from gnutls.errors import GNUTLSError
 
 from eventlet import api, coros, proc
 from eventlet.twistedutil.protocol import GreenTransportBase
-from eventlet.hubs.twistedr import callLater
 
 from msrplib import protocol, MSRPError
 from msrplib.util import random_string
@@ -75,7 +73,8 @@ class Peer:
 class MSRPProtocol_withLogging(protocol.MSRPProtocol):
 
     traffic_logger = None
-    _new_chunk = True
+    state_logger = None
+    _new_chunk = False
 
     def __init__(self, queue):
         self._queue = queue
@@ -98,8 +97,10 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
         protocol.MSRPProtocol.lineReceived(self, line)
 
     def connectionLost(self, reason):
-       if self.peer:
-           self.peer.connection_lost(reason)
+        if self.state_logger:
+            self.state_logger.report_disconnected(self.transport, reason)
+        if self.peer:
+            self.peer.connection_lost(reason)
 
     def setLineMode(self, extra):
         self._new_chunk = True
@@ -147,9 +148,8 @@ class MSRPTransport(GreenTransportBase):
     RESPONSE_TIMEOUT = 30
     debug = True
 
-    def __init__(self, local_uri, traffic_logger=None,
-                 allowed_content_types=None, debug=None,
-                 incoming=None):
+    def __init__(self, local_uri, traffic_logger=None, state_logger=None,
+                 allowed_content_types=None, debug=None, incoming=None):
         if not isinstance(local_uri, protocol.URI):
             raise TypeError('Not MSRP URI instance: %r' % local_uri)
         # The following members define To-Path and From-Path headers as following:
@@ -164,6 +164,7 @@ class MSRPTransport(GreenTransportBase):
         self.remote_uri = None
         self.remote_path = []
         self.traffic_logger = traffic_logger
+        self.state_logger = state_logger
         self.allowed_content_types = allowed_content_types
         if debug is not None:
             self.debug = debug
@@ -208,6 +209,7 @@ class MSRPTransport(GreenTransportBase):
     def build_protocol(self):
         p = GreenTransportBase.build_protocol(self)
         p.traffic_logger = self.traffic_logger
+        p.state_logger = self.state_logger
         return p
 
     def loseConnection(self):

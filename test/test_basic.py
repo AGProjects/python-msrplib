@@ -3,7 +3,7 @@ import sys
 import unittest
 import new
 
-from twisted.internet.error import ConnectionDone
+from twisted.internet.error import ConnectionDone, ConnectionClosed
 from twisted.names.srvconnect import SRVConnector
 from twisted.internet import reactor
 
@@ -13,7 +13,7 @@ from eventlet import proc
 
 from msrplib.connect import MSRPConnectFactory, MSRPAcceptFactory, MSRPRelaySettings, ConnectBase
 from msrplib import protocol as pr
-from msrplib.trafficlog import TrafficLogger, hook_std_output, HeaderLogger_File
+from msrplib.trafficlog import TrafficLogger, StateLogger, hook_std_output
 from msrplib.transport import MSRPTransport
 
 # add tell() method to stdout (needed by TrafficLogger)
@@ -57,11 +57,14 @@ class MSRPTransport_NoResponse(MSRPTransport):
             self.count += 1
             MSRPTransport.write_SEND_response(self, chunk, code, comment)
 
+
 class BasicTest(unittest.TestCase):
     server_relay = None
     client_relay = None
     client_traffic_logger = None # TrafficLogger.to_file(prefix='C ')
+    client_state_logger = StateLogger(prefix='C ')
     server_traffic_logger = None # TrafficLogger.to_file(prefix='S ')
+    server_state_logger = StateLogger(prefix='S ')
     PER_TEST_TIMEOUT = 30
     RESPONSE_TIMEOUT = 10
     debug = True
@@ -76,12 +79,16 @@ class BasicTest(unittest.TestCase):
         server_uri = pr.URI(use_tls=self.use_tls, credentials=self.server_credentials)
 
         def client():
-            msrp = MSRPConnectFactory.new(self.client_relay, self.client_traffic_logger,
+            msrp = MSRPConnectFactory.new(self.client_relay,
+                                          self.client_traffic_logger,
+                                          state_logger=self.client_state_logger,
                                           MSRPTransportClass=clientMSRPTransport)
             return _connect_msrp(client_path, server_path, msrp, client_uri)
 
         def server():
-            msrp = MSRPAcceptFactory.new(self.server_relay, self.server_traffic_logger,
+            msrp = MSRPAcceptFactory.new(self.server_relay,
+                                         self.server_traffic_logger,
+                                         state_logger=self.server_state_logger,
                                          MSRPTransportClass=serverMSRPTransport)
             return _connect_msrp(server_path, client_path, msrp, server_uri)
 
@@ -151,22 +158,43 @@ class BasicTest(unittest.TestCase):
         self.assertSameData(x, y)
         #self.assertNoIncoming(0.1, client, server)
 
-    def _test_closed(self, wait_func, *args, **kwargs):
-        try:
-            msg = "%s didn't raise ConnectionDone within %s seconds" % (wait_func, self.RESPONSE_TIMEOUT)
-            with timeout(self.RESPONSE_TIMEOUT, TimeoutError(msg)):
-                result = wait_func(*args, **kwargs)
-        except ConnectionDone:
-            pass
-        else:
-            raise AssertionError('%s must raise ConnectionDone, returned %r' % (wait_func, result))
-
     def test_close_connection__receive(self):
         client, server = proc.waitall(self.setup_two_endpoints())
         assert isinstance(client, MSRPTransport), repr(client)
         client.loseConnection()
-        self._test_closed(server.receive_chunk)
-        self._test_closed(server.send_chunk, self._make_hello(server))
+        self.assertRaises(ConnectionDone, server.receive_chunk)
+        self.assertRaises(ConnectionDone, server.send_chunk, self._make_hello(server))
+        self.assertRaises(ConnectionDone, client.receive_chunk)
+        self.assertRaises(ConnectionDone, client.send_chunk, self._make_hello(client))
+
+    def test_reader_failed__receive(self):
+        # if reader fails with an exception, receive_chunk and send_chunk methods
+        # raise that exception
+        # the other party should get ConnectionClosed
+        client, server = proc.waitall(self.setup_two_endpoints())
+        class MyError(Exception):
+            pass
+        client.reader_job.kill(MyError("Killing client's reader_job"))
+        self.assertRaises(MyError, client.receive_chunk)
+        self.assertRaises(MyError, client.send_chunk, self._make_hello(client))
+        self.assertRaises(ConnectionClosed, server.receive_chunk)
+        self.assertRaises(ConnectionClosed, server.send_chunk, self._make_hello(server))
+
+    def test_reader_failed__send(self):
+        # if reader fails with an exception, receive_chunk and send_chunk methods
+        # raise that exception
+        # the other party should get ConnectionClosed
+        client, server = proc.waitall(self.setup_two_endpoints())
+        class MyError(Exception):
+            pass
+        client.reader_job.kill(MyError("Killing client's reader_job"))
+        self.assertRaises(MyError, client.send_chunk, self._make_hello(client))
+        self.assertRaises(MyError, client.receive_chunk)
+        #The following does not raise as it copies chunk into twisted's buffer
+        #TODO: get rid of write buffer in eventlet.twistedutil - this may help
+        #TODO: send error in the reader to the event too, use deliver_event
+        #self.assertRaises(ConnectionClosed, server.send_chunk, self._make_hello(server))
+        self.assertRaises(ConnectionClosed, server.receive_chunk)
 
 from gnutls.crypto import X509PrivateKey, X509Certificate
 from gnutls.interfaces.twisted import X509Credentials
@@ -203,7 +231,8 @@ if options.host is not None:
     assert options.domain is not None
     relays.append(MSRPRelaySettings(options.domain, options.username, options.password, options.host, options.port))
 
-print relays
+if relays:
+    print relays
 
 configs = []
 for relay in relays:

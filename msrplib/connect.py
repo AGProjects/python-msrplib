@@ -77,15 +77,25 @@ class ConnectBase(object):
 
     def __init__(self, *args, **kwargs):
         self.args = args
-        self.kwargs = kwargs
         if 'MSRPTransportClass' in kwargs:
-            self.MSRPTransportClass = self.kwargs.pop('MSRPTransportClass')
+            self.MSRPTransportClass = kwargs.pop('MSRPTransportClass')
+        self.kwargs = kwargs
+
+    def _get_state_logger(self):
+        return self.kwargs.get('state_logger')
+
+    def _set_state_logger(self, state_logger):
+        self.kwargs['state_logger'] = state_logger
+
+    state_logger = property(_get_state_logger, _set_state_logger)
 
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
 
     def _connect(self, local_uri, remote_uri):
         from twisted.internet import reactor
+        if self.state_logger:
+            self.state_logger.report_connecting(remote_uri)
         creator = GreenClientCreator(reactor, self.MSRPTransportClass, local_uri, *self.args, **self.kwargs)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
@@ -99,6 +109,8 @@ class ConnectBase(object):
                                       connectFuncName=connectFuncName,
                                       connectFuncArgs=connectFuncArgs,
                                       ConnectorClass=self.SRVConnectorClass)
+        if self.state_logger:
+            self.state_logger.report_connected(msrp)
         return msrp
 
     def cleanup(self):
@@ -135,6 +147,8 @@ class AcceptorDirect(ConnectBase):
         listenFuncName = 'listen' + local_uri.protocol_name
         listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
         port = getattr(reactor, listenFuncName)(*listenFuncArgs)
+        if self.state_logger:
+            self.state_logger.report_listen(local_uri, port)
         return local_uri, port
 
     def prepare(self, local_uri=None):
@@ -150,13 +164,17 @@ class AcceptorDirect(ConnectBase):
         local_uri, self.listener = self._listen(local_uri, self.transport_event.send)
         # QQQ update local_uri.host as well?
         local_uri.port = self.listener.getHost().port
+        self.local_uri = local_uri
         return [local_uri]
 
     def getHost(self):
         return self.listener.getHost()
 
     def _accept(self):
-        return self.transport_event.wait()
+        msrp = self.transport_event.wait()
+        if self.state_logger:
+            self.state_logger.report_accepted(self.local_uri, msrp)
+        return msrp
 
     def complete(self, full_remote_path):
         """Accept an incoming MSRP connection and bind it.

@@ -79,6 +79,7 @@ class HeaderLogger_File(HeaderLogger):
         else:
             HeaderLogger.__init__(self, fileobj.write, fileobj.tell, is_enabled_func, prefix=prefix)
 
+
 class TrafficLogger:
 
     def __init__(self, header_logger):
@@ -115,6 +116,50 @@ class TrafficLogger:
     def format_address(self, addr):
         return "%s:%s" % (addr.host, addr.port)
 
+
+class StateLogger:
+
+    prefix = 'MSRP: '
+
+    def __init__(self, write_func=None, prefix=None):
+        if write_func is not None:
+            self._write = write_func
+        if prefix is not None:
+            self.prefix = prefix
+
+    def _write(self, msg):
+        sys.stdout.write(msg + '\n')
+
+    def report_connecting(self, remote_uri):
+        msg = '%s%s connecting to %s' % (self.prefix, remote_uri.protocol_name, remote_uri, )
+        self._write(msg)
+
+    def report_connected(self, transport):
+        msg = '%sConnected to %s:%s' % (self.prefix,
+                                        transport.getPeer().host,
+                                        transport.getPeer().port)
+        self._write(msg)
+
+    def report_disconnected(self, transport, reason):
+        msg = '%sClosed connection to %s:%s (%s)' % (self.prefix,
+                                                     transport.getPeer().host,
+                                                     transport.getPeer().port,
+                                                     reason.getErrorMessage())
+        self._write(msg)
+
+    def report_listen(self, local_uri, port):
+        msg = '%s%s listening on %s:%s' % (self.prefix, local_uri.protocol_name,
+                                           port.getHost().host, port.getHost().port)
+        self._write(msg)
+
+    def report_accepted(self, local_uri, transport):
+        msg = '%s%s accepted from %s:%s on %s:%s' % (self.prefix, local_uri.protocol_name,
+                                                     transport.getPeer().host, transport.getPeer().port,
+                                                     transport.getHost().host, transport.getHost().port)
+        self._write(msg)
+
+
+
 class FileWithTell(object):
 
     def __init__(self, original):
@@ -143,6 +188,7 @@ def hook_std_output():
 
 def restore_std_output():
     sys.stdout = __original_sys_stdout__
+
 
 if __name__=='__main__':
     import doctest
