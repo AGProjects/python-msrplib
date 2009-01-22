@@ -7,6 +7,7 @@ from twisted.internet.address import IPv4Address
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet.coros import event
 from eventlet.api import timeout
+from eventlet.proc import spawn_greenlet
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest
@@ -134,8 +135,12 @@ class ConnectorDirect(ConnectBase):
             msrp = self._connect(self.local_uri, full_remote_path[0])
             # can't do the following, because local_uri was already used in the INVITE
             #msrp.local_uri.port = msrp.getHost().port
-        with MSRPBindSessionTimeout.timeout():
-            msrp.bind(full_remote_path)
+        try:
+            with MSRPBindSessionTimeout.timeout():
+                msrp.bind(full_remote_path)
+        except:
+            spawn_greenlet(msrp.loseConnection)
+            raise
         return msrp
 
 class AcceptorDirect(ConnectBase):
@@ -185,8 +190,12 @@ class AcceptorDirect(ConnectBase):
                 msrp = self._accept()
         finally:
             self.cleanup()
-        with MSRPBindSessionTimeout.timeout():
-            msrp.accept_binding(full_remote_path)
+        try:
+            with MSRPBindSessionTimeout.timeout():
+                msrp.accept_binding(full_remote_path)
+        except:
+            spawn_greenlet(msrp.loseConnection)
+            raise
         return msrp
 
     def cleanup(self):
@@ -215,22 +224,26 @@ class RelayConnectBase(ConnectBase):
 
     def _relay_connect(self, local_uri):
         conn = self._connect(local_uri, self.relay)
-        local_uri.port = conn.getHost().port
-        msrpdata = protocol.MSRPData(method="AUTH", transaction_id=random_string(12))
-        msrpdata.add_header(protocol.ToPathHeader([self.relay.uri_domain]))
-        msrpdata.add_header(protocol.FromPathHeader([local_uri]))
-        response = _deliver_chunk(conn, msrpdata)
-        if response.code == 401:
-            www_authenticate = response.headers["WWW-Authenticate"]
-            auth, rsp_auth = process_www_authenticate(self.relay.username, self.relay.password, "AUTH",
-                                                      str(self.relay.uri_domain), **www_authenticate.decoded)
-            msrpdata.transaction_id = random_string(12)
-            msrpdata.add_header(protocol.AuthorizationHeader(auth))
+        try:
+            local_uri.port = conn.getHost().port
+            msrpdata = protocol.MSRPData(method="AUTH", transaction_id=random_string(12))
+            msrpdata.add_header(protocol.ToPathHeader([self.relay.uri_domain]))
+            msrpdata.add_header(protocol.FromPathHeader([local_uri]))
             response = _deliver_chunk(conn, msrpdata)
-        if response.code != 200:
-            raise MSRPRelayAuthError(comment=response.comment, code=response.code)
-        conn.use_path(list(response.headers["Use-Path"].decoded))
-        #print 'Reserved session at MSRP relay %s:%d, Use-Path: %s' % (relaysettings.host, relaysettings.port, conn.local_uri)
+            if response.code == 401:
+                www_authenticate = response.headers["WWW-Authenticate"]
+                auth, rsp_auth = process_www_authenticate(self.relay.username, self.relay.password, "AUTH",
+                                                          str(self.relay.uri_domain), **www_authenticate.decoded)
+                msrpdata.transaction_id = random_string(12)
+                msrpdata.add_header(protocol.AuthorizationHeader(auth))
+                response = _deliver_chunk(conn, msrpdata)
+            if response.code != 200:
+                raise MSRPRelayAuthError(comment=response.comment, code=response.code)
+            conn.use_path(list(response.headers["Use-Path"].decoded))
+            #print 'Reserved session at MSRP relay %s:%d, Use-Path: %s' % (relaysettings.host, relaysettings.port, conn.local_uri)
+        except:
+            spawn_greenlet(conn.loseConnection)
+            raise
         return conn
 
     def _relay_connect_timeout(self, local_uri):
@@ -260,6 +273,9 @@ class ConnectorRelay(RelayConnectBase):
             with MSRPBindSessionTimeout.timeout():
                 self.msrp.bind(full_remote_path)
             return self.msrp
+        except:
+            spawn_greenlet(self.msrp.loseConnection)
+            raise
         finally:
             del self.msrp
 
@@ -270,6 +286,9 @@ class AcceptorRelay(RelayConnectBase):
             with MSRPBindSessionTimeout.timeout():
                 self.msrp.accept_binding(full_remote_path)
             return self.msrp
+        except:
+            spawn_greenlet(self.msrp.loseConnection)
+            raise
         finally:
             del self.msrp
 
