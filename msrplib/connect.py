@@ -3,6 +3,7 @@
 from __future__ import with_statement
 
 from twisted.internet.address import IPv4Address
+from application.system import default_host_ip
 
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet.coros import event
@@ -128,7 +129,7 @@ class ConnectorDirect(ConnectBase):
         return [self.local_uri]
 
     def getHost(self):
-        return IPv4Address('TCP', '0.0.0.0', 0)
+        return IPv4Address('TCP', default_host_ip, 0)
 
     def complete(self, full_remote_path):
         with MSRPConnectTimeout.timeout():
