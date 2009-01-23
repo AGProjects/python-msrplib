@@ -150,6 +150,7 @@ class MSRPTransport(GreenTransportBase):
 
     def __init__(self, local_uri, traffic_logger=None, state_logger=None,
                  allowed_content_types=None, debug=None, incoming=None):
+        GreenTransportBase.__init__(self)
         if not isinstance(local_uri, protocol.URI):
             raise TypeError('Not MSRP URI instance: %r' % local_uri)
         # The following members define To-Path and From-Path headers as following:
@@ -214,12 +215,12 @@ class MSRPTransport(GreenTransportBase):
 
     def loseConnection(self):
         # XXX break the current chunk
-        self.transport.loseConnection()
+        GreenTransportBase.loseConnection(self)
 
     def write(self, data):
         if self.traffic_logger:
             self.traffic_logger.report_out(data, self.transport)
-        return self.transport.write(data)
+        return GreenTransportBase.write(self, data)
 
     def write_chunk(self, chunk):
         """Encode chunk and write it to the underlying transport"""
