@@ -1,3 +1,26 @@
+python-msrplib (0.9.1) unstable; urgency=low
+
+  * renamed transport.MSRPSession to MSRPTransport
+  * fixed MSRPTransport to call base' class methods where necessary
+  * added cleanup() methods to all acceptors/connectors
+  * added protocol.ConnectInfo - base class for both relaysettings and uri
+  * added deliver_chunk and deliver_message methods to MSRPTransport
+  * added tests for TLS when a relay is not involved
+  * changed short title in debian/control
+  * added getHost() method to connectors/acceptors
+  * added to_file method to logger
+  * added MSRPRelaySettings.__str__
+  * better handling of GNUTLS error
+  * improved error handling, explicitly close the connection in case of error
+    in many places where it makes sense
+  * added connection state logging (connected, disconnected, accepted, etc)
+  * added MANIFEST.in
+  * added debian dependency on python-application
+  * fixed to use latest eventlet and added dependency on python-eventlet
+    debian package
+
+ -- Denis Bilenko <denis@ag-projects.com>  Mon, 26 Jan 2009 14:52:47 +0100
+
 python-msrplib (0.9.0) unstable; urgency=low
 
   * first public release
