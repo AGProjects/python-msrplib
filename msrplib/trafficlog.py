@@ -45,7 +45,6 @@ class HeaderLogger:
             self.last_header = None
         if not self._is_enabled():
             return
-        assert 'ABC' not in msg
         data = ''
         if header is not None:
             if header != self.last_header or self.last_tell != self._tell():
