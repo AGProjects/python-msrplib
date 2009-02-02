@@ -377,8 +377,8 @@ class MSRPTransport(GreenTransportBase):
             # because bufferSize applies both to write buffering and recv's argument (why?)
             # need to hack twisted.internet.tcp.
         except:
-            if event is not None and id in self.expected_responses:
-                del self.expected_responses[id]
+            if event is not None:
+                self.expected_response.pop(id, None)
             raise
         else:
             if event is not None:
