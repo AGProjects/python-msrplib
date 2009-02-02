@@ -200,12 +200,10 @@ class AcceptorDirect(ConnectBase):
         return msrp
 
     def cleanup(self):
-        try:
+        if self.listener is not None:
             self.listener.stopListening()
-            del self.listener
-            del self.transport_event
-        except AttributeError:
-            pass
+            self.listener = None
+        self.transport_event = None
 
 def _deliver_chunk(msrp, chunk):
     msrp.write_chunk(chunk)
@@ -261,11 +259,9 @@ class RelayConnectBase(ConnectBase):
         return self.msrp.getHost()
 
     def cleanup(self):
-        try:
+        if self.msrp is not None:
             self.msrp.loseConnection()
-            del self.msrp
-        except AttributeError:
-            pass
+            self.msrp = None
 
 class ConnectorRelay(RelayConnectBase):
 
@@ -278,7 +274,7 @@ class ConnectorRelay(RelayConnectBase):
             spawn_greenlet(self.msrp.loseConnection)
             raise
         finally:
-            del self.msrp
+            self.msrp = None
 
 class AcceptorRelay(RelayConnectBase):
 
@@ -291,7 +287,7 @@ class AcceptorRelay(RelayConnectBase):
             spawn_greenlet(self.msrp.loseConnection)
             raise
         finally:
-            del self.msrp
+            self.msrp = None
 
 class MSRPConnectFactory:
     ConnectorDirect = ConnectorDirect
