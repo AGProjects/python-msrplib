@@ -328,7 +328,7 @@ class MSRPTransport(GreenTransportBase):
         except ConnectionClosedErrors, ex:
             return ex
         finally:
-            self.loseConnection()
+            proc.spawn_greenlet(self.loseConnection)
 
     def poll_error(self):
         error = self.reader_job.wait(0, None)
