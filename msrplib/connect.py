@@ -77,8 +77,7 @@ class ConnectBase(object):
     MSRPTransportClass = MSRPTransport
     SRVConnectorClass = None
 
-    def __init__(self, *args, **kwargs):
-        self.args = args
+    def __init__(self, **kwargs):
         if 'MSRPTransportClass' in kwargs:
             self.MSRPTransportClass = kwargs.pop('MSRPTransportClass')
         self.kwargs = kwargs
@@ -98,7 +97,7 @@ class ConnectBase(object):
         from twisted.internet import reactor
         if self.state_logger:
             self.state_logger.report_connecting(remote_uri)
-        creator = GreenClientCreator(reactor, self.MSRPTransportClass, local_uri, *self.args, **self.kwargs)
+        creator = GreenClientCreator(reactor, self.MSRPTransportClass, local_uri, **self.kwargs)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
@@ -149,7 +148,7 @@ class AcceptorDirect(ConnectBase):
     def _listen(self, local_uri, handler):
         # QQQ use ip from local_uri as binding interface?
         from twisted.internet import reactor
-        factory = SpawnFactory(handler, self.MSRPTransportClass, local_uri, *self.args, **self.kwargs)
+        factory = SpawnFactory(handler, self.MSRPTransportClass, local_uri, **self.kwargs)
         listenFuncName = 'listen' + local_uri.protocol_name
         listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
         port = getattr(reactor, listenFuncName)(*listenFuncArgs)
@@ -217,9 +216,9 @@ def _deliver_chunk(msrp, chunk):
 
 class RelayConnectBase(ConnectBase):
 
-    def __init__(self, relay, *args, **kwargs):
+    def __init__(self, relay, **kwargs):
         self.relay = relay
-        ConnectBase.__init__(self, *args, **kwargs)
+        ConnectBase.__init__(self, **kwargs)
 
     def _relay_connect(self, local_uri):
         conn = self._connect(local_uri, self.relay)
@@ -289,23 +288,26 @@ class AcceptorRelay(RelayConnectBase):
         finally:
             self.msrp = None
 
+# the 2 classes below look plain weird and I don't see a use case for such
+# weirdness anymore. to be replaced with functions get_connector, get_acceptor
+
 class MSRPConnectFactory:
     ConnectorDirect = ConnectorDirect
     ConnectorRelay = ConnectorRelay
 
     @classmethod
-    def new(cls, relay, *args, **kwargs):
+    def new(cls, relay, **kwargs):
         if relay is None:
-            return cls.ConnectorDirect(*args, **kwargs)
-        return cls.ConnectorRelay(relay, *args, **kwargs)
+            return cls.ConnectorDirect(**kwargs)
+        return cls.ConnectorRelay(relay, **kwargs)
 
 class MSRPAcceptFactory(object):
     AcceptorDirect = AcceptorDirect
     AcceptorRelay = AcceptorRelay
 
     @classmethod
-    def new(cls, relay, *args, **kwargs):
+    def new(cls, relay, **kwargs):
         if relay is None:
-            return cls.AcceptorDirect(*args, **kwargs)
-        return cls.AcceptorRelay(relay, *args, **kwargs)
+            return cls.AcceptorDirect(**kwargs)
+        return cls.AcceptorRelay(relay, **kwargs)
 

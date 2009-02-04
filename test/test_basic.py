@@ -79,15 +79,15 @@ class BasicTest(unittest.TestCase):
         server_uri = pr.URI(use_tls=self.use_tls, credentials=self.server_credentials)
 
         def client():
-            msrp = MSRPConnectFactory.new(self.client_relay,
-                                          self.client_traffic_logger,
+            msrp = MSRPConnectFactory.new(relay=self.client_relay,
+                                          traffic_logger=self.client_traffic_logger,
                                           state_logger=self.client_state_logger,
                                           MSRPTransportClass=clientMSRPTransport)
             return _connect_msrp(client_path, server_path, msrp, client_uri)
 
         def server():
-            msrp = MSRPAcceptFactory.new(self.server_relay,
-                                         self.server_traffic_logger,
+            msrp = MSRPAcceptFactory.new(relay=self.server_relay,
+                                         traffic_logger=self.server_traffic_logger,
                                          state_logger=self.server_state_logger,
                                          MSRPTransportClass=serverMSRPTransport)
             return _connect_msrp(server_path, client_path, msrp, server_uri)
