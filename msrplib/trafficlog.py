@@ -130,13 +130,19 @@ class StateLogger:
         sys.stdout.write(msg + '\n')
 
     def report_connecting(self, remote_uri):
-        msg = '%s%s connecting to %s' % (self.prefix, remote_uri.protocol_name, remote_uri, )
+        msg = '%sConnecting to %s' % (self.prefix, remote_uri, )
         self._write(msg)
 
     def report_connected(self, transport):
         msg = '%sConnected to %s:%s' % (self.prefix,
                                         transport.getPeer().host,
                                         transport.getPeer().port)
+        self._write(msg)
+
+    def report_session_reserved(self, transport):
+        msg = '%sReserved session to %s:%s' % (self.prefix,
+                                               transport.getPeer().host,
+                                               transport.getPeer().port)
         self._write(msg)
 
     def report_disconnected(self, transport, reason):
@@ -148,8 +154,8 @@ class StateLogger:
         self._write(msg)
 
     def report_listen(self, local_uri, port):
-        msg = '%s%s listening on %s:%s' % (self.prefix, local_uri.protocol_name,
-                                           port.getHost().host, port.getHost().port)
+        msg = '%sListening for incoming %s connections on %s:%s' % (self.prefix, local_uri.protocol_name,
+                                                                    port.getHost().host, port.getHost().port)
         self._write(msg)
 
     def report_accepted(self, local_uri, transport):

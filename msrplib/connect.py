@@ -238,7 +238,8 @@ class RelayConnectBase(ConnectBase):
             if response.code != 200:
                 raise MSRPRelayAuthError(comment=response.comment, code=response.code)
             conn.use_path(list(response.headers["Use-Path"].decoded))
-            #print 'Reserved session at MSRP relay %s:%d, Use-Path: %s' % (relaysettings.host, relaysettings.port, conn.local_uri)
+            if self.state_logger:
+                self.state_logger.report_session_reserved(conn)
         except:
             spawn_greenlet(conn.loseConnection)
             raise
