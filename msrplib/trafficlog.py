@@ -118,7 +118,8 @@ class TrafficLogger:
 
 class StateLogger:
 
-    prefix = 'MSRP: '
+    prefix = ''
+    debug = False
 
     def __init__(self, write_func=None, prefix=None):
         if write_func is not None:
@@ -129,40 +130,43 @@ class StateLogger:
     def _write(self, msg):
         sys.stdout.write(msg + '\n')
 
+    def write(self, msg):
+        self._write(self.prefix + msg)
+
+    def dbg(self, msg):
+        if self.debug:
+            return self.write(msg)
+
     def report_connecting(self, remote_uri):
-        msg = '%sConnecting to %s' % (self.prefix, remote_uri, )
-        self._write(msg)
+        msg = 'Connecting to %s' % (remote_uri, )
+        self.write(msg)
 
     def report_connected(self, transport):
-        msg = '%sConnected to %s:%s' % (self.prefix,
-                                        transport.getPeer().host,
-                                        transport.getPeer().port)
-        self._write(msg)
+        msg = 'Connected to %s:%s' % (transport.getPeer().host,
+                                      transport.getPeer().port)
+        self.write(msg)
 
     def report_session_reserved(self, transport):
-        msg = '%sReserved session to %s:%s' % (self.prefix,
-                                               transport.getPeer().host,
-                                               transport.getPeer().port)
-        self._write(msg)
+        msg = 'Reserved session at %s:%s' % (transport.getPeer().host,
+                                             transport.getPeer().port)
+        self.write(msg)
 
     def report_disconnected(self, transport, reason):
-        msg = '%sClosed connection to %s:%s' % (self.prefix,
-                                                transport.getPeer().host,
-                                                transport.getPeer().port)
+        msg = 'Closed connection to %s:%s' % (transport.getPeer().host,
+                                              transport.getPeer().port)
         if not isinstance(reason.value, ConnectionDone):
             msg += ' (%s)' % reason.getErrorMessage()
-        self._write(msg)
+        self.write(msg)
 
     def report_listen(self, local_uri, port):
-        msg = '%sListening for incoming %s connections on %s:%s' % (self.prefix, local_uri.protocol_name,
-                                                                    port.getHost().host, port.getHost().port)
-        self._write(msg)
+        msg = 'Listening for incoming %s connections on %s:%s' % (local_uri.scheme.upper(),
+                                                                  port.getHost().host, port.getHost().port)
+        self.write(msg)
 
     def report_accepted(self, transport, local_uri):
-        msg = '%sIncoming %s connection from %s:%s' % (self.prefix, local_uri.scheme.upper(),
-                                                       transport.getPeer().host, transport.getPeer().port)
-        self._write(msg)
-
+        msg = 'Incoming %s connection from %s:%s' % (local_uri.scheme.upper(),
+                                                     transport.getPeer().host, transport.getPeer().port)
+        self.write(msg)
 
 
 class FileWithTell(object):
