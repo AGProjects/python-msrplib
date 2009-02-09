@@ -76,7 +76,7 @@ class BasicTest(unittest.TestCase):
         client_path = TimeoutEvent()
 
         client_uri = pr.URI(use_tls=self.use_tls)
-        server_uri = pr.URI(use_tls=self.use_tls, credentials=self.server_credentials)
+        server_uri = pr.URI(port=0, use_tls=self.use_tls, credentials=self.server_credentials)
 
         def client():
             msrp = MSRPConnectFactory.new(relay=self.client_relay,
