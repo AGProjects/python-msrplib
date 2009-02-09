@@ -302,6 +302,12 @@ class MSRPData(object):
                 description += " %s" % self.comment
         else:
             description = "%s %s" % (self.transaction_id, self.method)
+        if self.message_id is not None:
+            description += ' Message-ID=%s' % self.message_id
+        if "Failure-Report" in self.headers:
+            description += ' Failure-Report=%s' % self.headers["Failure-Report"].decoded
+        if "Success-Report" in self.headers:
+            description += ' Success-Report=%s' % self.headers["Success-Report"].decoded
         return '<%s at %s %s>' % (klass, hex(id(self)), description)
 
     def __eq__(self, other):
