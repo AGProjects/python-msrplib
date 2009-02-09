@@ -178,7 +178,7 @@ class AcceptorDirect(ConnectBase):
     def _accept(self):
         msrp = self.transport_event.wait()
         if self.state_logger:
-            self.state_logger.report_accepted(self.local_uri, msrp)
+            self.state_logger.report_accepted(msrp, self.local_uri)
         return msrp
 
     def complete(self, full_remote_path):

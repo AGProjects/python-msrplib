@@ -158,7 +158,7 @@ class StateLogger:
                                                                     port.getHost().host, port.getHost().port)
         self._write(msg)
 
-    def report_accepted(self, local_uri, transport):
+    def report_accepted(self, transport, local_uri):
         msg = '%sIncoming %s connection from %s:%s' % (self.prefix, local_uri.scheme.upper(),
                                                        transport.getPeer().host, transport.getPeer().port)
         self._write(msg)
