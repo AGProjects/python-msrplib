@@ -1,12 +1,13 @@
 # Copyright (C) 2008 AG Projects. See LICENSE for details
 
 from __future__ import with_statement
+import sys
 from twisted.internet.error import ConnectionClosed
 
 from gnutls.errors import GNUTLSError
 
 from eventlet import api, coros, proc
-from eventlet.twistedutil.protocol import GreenTransportBase
+from eventlet.twistedutil.protocol import GreenTransportBase, ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.util import random_string
@@ -53,37 +54,12 @@ class MSRPSessionError(MSRPTransactionError):
 
 data_start, data_end, write_chunk = range(3)
 
-class Peer:
-
-    def __init__(self, channel):
-        self.channel = channel
-
-    def data_start(self, data):
-        self.channel.send((data_start, data))
-
-    def data_end(self, continuation):
-        self.channel.send((data_end, continuation))
-
-    def write_chunk(self, contents):
-        self.channel.send((write_chunk, contents))
-
-    def connection_lost(self, reason):
-        self.channel.send_exception(reason.type, reason.value, reason.tb)
 
 class MSRPProtocol_withLogging(protocol.MSRPProtocol):
 
     traffic_logger = None
     state_logger = None
     _new_chunk = False
-
-    def __init__(self, queue):
-        self._queue = queue
-        protocol.MSRPProtocol.__init__(self)
-
-    def connectionMade(self):
-        self._queue.send(self.transport)
-        self.peer = Peer(self._queue)
-        del self._queue
 
     def rawDataReceived(self, data):
         if self.traffic_logger:
@@ -99,8 +75,8 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
     def connectionLost(self, reason):
         if self.state_logger:
             self.state_logger.report_disconnected(self.transport, reason)
-        if self.peer:
-            self.peer.connection_lost(reason)
+        protocol.MSRPProtocol.connectionLost(self, reason)
+    # QQQ logging for readConnectionLost / writeConnectionLost ?
 
     def setLineMode(self, extra):
         self._new_chunk = True
@@ -115,8 +91,6 @@ def make_SEND_response(chunk, code, comment):
     response.add_header(protocol.FromPathHeader(from_path))
     return response
 
-class Message(str):
-    pass
 
 class LocalResponse(object):
 
@@ -130,6 +104,7 @@ class LocalResponse(object):
 Response200OK = LocalResponse(200, "OK")
 Response408Timeout = LocalResponse(408, "Local transaction timed out")
 # XXX LocalResponse has the same attributes as MSRPTransactionError
+
 
 class MSRPTransport(GreenTransportBase):
     """An MSRP session that exclusively uses the connection.
@@ -172,9 +147,12 @@ class MSRPTransport(GreenTransportBase):
         self.expected_responses = {}
         self.reader_job = None
         if incoming is None:
-            incoming = coros.queue(0)
+            incoming = ValueQueue()
         self.incoming = incoming
+        self.outgoing = coros.queue()
+        self.writer_job = None
         #self.chunks = {} # maps message_id to StringIO instance that represents contents of the message
+        self._disconnecting = False
 
     def next_host(self):
         if self.local_path:
@@ -213,9 +191,39 @@ class MSRPTransport(GreenTransportBase):
         p.state_logger = self.state_logger
         return p
 
-    def loseConnection(self):
+    def _data_start(self, data):
+        self._queue.send((data_start, data))
+
+    def _data_end(self, continuation):
+        self._queue.send((data_end, continuation))
+
+    def _write_chunk(self, contents):
+        self._queue.send((write_chunk, contents))
+
+    _got_data = None
+
+    def initiate_shutdown(self):
         # XXX break the current chunk
-        GreenTransportBase.loseConnection(self)
+        self._disconnecting = True
+        self.outgoing.send(None)
+
+    SHUTDOWN_TIMEOUT = 1
+
+    def shutdown(self):
+        """Shutdown the connection.
+
+        1) Finish sending outgoing queue.
+        2) Lose write connection.
+        3) Wait for the other party to finish sending
+        4) If the other party won't finish in SHUTDOWN_TIMEOUT seconds, close
+           the connection
+        """
+        try:
+            self.initiate_shutdown()
+            self.writer_job.wait(None, None)
+            self.reader_job.wait(self.SHUTDOWN_TIMEOUT, None)
+        finally:
+            self.loseConnection()
 
     def write(self, data):
         if self.traffic_logger:
@@ -226,20 +234,28 @@ class MSRPTransport(GreenTransportBase):
         """Encode chunk and write it to the underlying transport"""
         self.write(chunk.encode())
 
-    def write_SEND_response(self, chunk, code, comment):
+    def make_SEND_response(self, chunk, code, comment):
         assert chunk.method=='SEND', repr(chunk)
         if chunk.failure_report=='no':
             return
         if chunk.failure_report=='partial' and code==200:
             return
         try:
-            response = make_SEND_response(chunk, code, comment)
+            return make_SEND_response(chunk, code, comment)
         except Exception:
             # there could an exception if chunk is somehow broken
             if self.debug:
                 raise
-        else:
-            return self.write_chunk(response)
+
+    def write_SEND_response(self, chunk, code, comment):
+        response = self.make_SEND_response(chunk, code, comment)
+        self.write_chunk(response)
+        return response
+
+    def send_SEND_response(self, chunk, code, comment):
+        response = self.make_SEND_response(chunk, code, comment)
+        self.send_chunk(response)
+        return response
 
     def _wait_chunk(self):
         """Wait for a new chunk. Return it bypassing self.incoming"""
@@ -259,6 +275,7 @@ class MSRPTransport(GreenTransportBase):
         msrpdata.contflag = param
         return msrpdata
 
+    # XXX deprecate raise_on_error. instead log information about bad chunk and close the connection
     def _wait_chunk_respond_errors(self, raise_on_error=False):
         """Wait for a new chunk. Return it bypassing self.incoming.
 
@@ -274,7 +291,7 @@ class MSRPTransport(GreenTransportBase):
                 if chunk.method == 'SEND':
                     # QQQ may send this more than once in a row for the same transaction
                     # QQQ chunk is incomplete here, may have no to-path/from-path headers
-                    self.write_SEND_response(chunk, error.code, error.comment)
+                    self.send_SEND_response(chunk, error.code, error.comment)
                     if raise_on_error:
                         raise
             else:
@@ -283,15 +300,12 @@ class MSRPTransport(GreenTransportBase):
                 if chunk.method=='SEND':
                     error = self.check_path_headers_SEND(chunk)
                     if error is not None:
-                        self.write_SEND_response(chunk, error.code, error.comment)
+                        self.send_SEND_response(chunk, error.code, error.comment)
                         if raise_on_error:
                             raise error
                         else:
                             continue
                 return chunk
-
-    def _send_to_incoming(self, chunk):
-        self.incoming.send(chunk)
 
     def _reader(self, raise_on_error=False):
         """Wait forever for new chunks. Send the good ones to self.incoming queue.
@@ -299,9 +313,11 @@ class MSRPTransport(GreenTransportBase):
         If a response to a previously sent chunk is received, pop the corresponding
         event from self.expected_responses and send the response there.
         """
+        self.state_logger.dbg('reader: started')
         try:
-            while True:
+            while not self._disconnecting:
                 chunk = self._wait_chunk_respond_errors(raise_on_error=raise_on_error)
+                self.state_logger.dbg('reader: got chunk %r' % chunk)
                 if chunk.method is None: # response
                     try:
                         event, timer = self.expected_responses.pop(chunk.transaction_id)
@@ -314,37 +330,73 @@ class MSRPTransport(GreenTransportBase):
                 elif chunk.method=='SEND':
                     error = self.check_content_type(chunk)
                     if error is not None:
-                        self.write_SEND_response(chunk, error.code, error.comment)
+                        self.send_SEND_response(chunk, error.code, error.comment)
                         if raise_on_error:
                             raise
                     else:
-                        self.write_SEND_response(chunk, 200, "OK")
-                        self._send_to_incoming(chunk)
+                        try:
+                            self.send_SEND_response(chunk, 200, "OK")
+                        finally:
+                            self.state_logger.dbg('reader: sending %r to incoming' % chunk)
+                            self.incoming.send(chunk)
                 elif chunk.method=='REPORT':
                     # QQQ deliver to incoming as well
                     pass
                 else:
                     pass # QQQ respond 506
         except ConnectionClosedErrors, ex:
-            return ex
+            self.state_logger.dbg('reader: exiting because of %r' % ex)
+            self.incoming.send_exception(ex)
+        except:
+            self.state_logger.dbg('reader: losing connection because of %r' % (sys.exc_info(), ))
+            self.unregisterProducer()
+            self.transport.loseConnection()
+            self.incoming.send_exception(*sys.exc_info())
+            raise
         finally:
-            proc.spawn_greenlet(self.loseConnection)
-
-    def poll_error(self):
-        error = self.reader_job.wait(0, None)
-        if isinstance(error, BaseException):
-            raise error
+            self.initiate_shutdown()
+            if not self.writer_job:
+                self.state_logger.dbg('reader: losing connection because writer has finished already')
+                self.unregisterProducer()
+                self.transport.loseConnection()
 
     def receive_chunk(self):
+        return self.incoming.wait()
+
+    def _writer(self):
+        self.state_logger.dbg('writer: started')
         try:
-            self.reader_job.link()
-            try:
-                return self.incoming.wait()
-            finally:
-                # not good, will screw up caller's link to the current greenlet if he had one
-                self.reader_job.unlink()
-        except proc.LinkedExited:
-            self.poll_error()
+            while not self._disconnecting:
+                send_params = self.outgoing.wait()
+                if send_params is None:
+                    # user has called shutdown
+                    # XXX what about rest of outgoing
+                    self.state_logger.dbg('writer: shutdown() was called')
+                    break
+                self.state_logger.dbg('writer: processing %s' % (send_params, ))
+                self._send_chunk(*send_params)
+                self.state_logger.dbg('writer: sent chunk %s' % (send_params, ))
+            while self.outgoing:
+                send_params = self.outgoing.wait()
+                if send_params is not None:
+                    self.state_logger.dbg('writer: processing %s' % (send_params, ))
+                    self._send_chunk(*send_params)
+                    self.state_logger.dbg('writer: sent chunk %s' % (send_params, ))
+        except ConnectionClosedErrors, ex:
+            self.state_logger.dbg('writer: exiting because of %r' % (ex, ))
+            # the error will be available via self._write_disconnected_event
+        except:
+            self.state_logger.dbg('writer: losing connection because of %r' % (sys.exc_info(), ))
+            self.transport.loseConnection()
+            raise
+        finally:
+            self.transport.unregisterProducer()
+            if self.reader_job:
+                self.state_logger.dbg('writer: lose write connection')
+                self.transport.loseWriteConnection()
+            else:
+                self.state_logger.dbg('writer: lose connection because reader has finished already')
+                self.transport.loseConnection()
 
     def send_chunk(self, chunk, event=None):
         """Send `chunk'. Report the result via `event'.
@@ -362,20 +414,25 @@ class MSRPTransport(GreenTransportBase):
         for chunks with Failure-Report='no' since it will always fire 30 seconds later
         with 200 result (unless the other party is broken and ignores Failure-Report header)
         """
-        self.poll_error()
+        if self._write_disconnected_event.ready(): # rename to self._lost_write_event
+            raise self._write_disconnected_event.wait()
+        if chunk.method == 'SEND' and (chunk.failure_report, chunk.success_report) != ('no', 'no'):
+            if self._read_disconnected_event.ready():
+                raise self._read_disconnected_event.wait()
+            assert not self.reader_job.dead, self.reader_job
+        assert not self.writer_job.dead, self.writer_job
+        self.outgoing.send((chunk, event))
+
+    def _send_chunk(self, chunk, event=None):
         id = chunk.transaction_id
         assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
         if event is not None:
-            # since reader is in another greenlet and write_chunk may block,
+            # since reader is in another greenlet and write_chunk will switch() the greenlets,
             # let's setup response's event and timer before write_chunk() call, just in case
             event_and_timer = [event, None]
             self.expected_responses[id] = event_and_timer
         try:
             self.write_chunk(chunk)
-            # must start timer after data was submitted to the OS. However, twisted's transport
-            # introduces additional buffer. I cannot just disable it (by setting bufferSize to 1)
-            # because bufferSize applies both to write buffering and recv's argument (why?)
-            # need to hack twisted.internet.tcp.
         except:
             if event is not None:
                 self.expected_response.pop(id, None)
@@ -386,6 +443,13 @@ class MSRPTransport(GreenTransportBase):
                 timer = api.get_hub().schedule_call_global(self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
                 event_and_timer[1] = timer
 
+    def _response_timeout(self, id, timeout_error):
+        event, timer = self.expected_responses.pop(id, (None, None))
+        if event is not None:
+            event.send(timeout_error)
+            if timer is not None:
+                timer.cancel()
+
     def deliver_chunk(self, chunk, event=None):
         """Send chunk, return the transaction response.
         Return None immediatelly if chunk's Failure-Report is 'no'.
@@ -395,16 +459,6 @@ class MSRPTransport(GreenTransportBase):
         self.send_chunk(chunk, event)
         if event is not None:
             return event.wait()
-
-    def _response_timeout(self, id, timeout_error):
-        try:
-            event, timer = self.expected_responses.pop(id)
-        except KeyError:
-            pass
-        else:
-            if timer is not None:
-                timer.cancel()
-            event.send(timeout_error)
 
     def check_path_headers_SEND(self, chunk):
         assert chunk.method=='SEND', repr(chunk)
@@ -439,14 +493,16 @@ class MSRPTransport(GreenTransportBase):
         if response.code != 200:
             raise MSRPSessionError('Cannot bind session: %s' % response)
         self.reader_job = proc.spawn(self._reader, self.debug)
+        self.writer_job = proc.spawn(self._writer)
 
     def accept_binding(self, full_remote_path):
         self._set_full_remote_path(full_remote_path)
         chunk = self._wait_chunk_respond_errors(raise_on_error=True)
         self.write_SEND_response(chunk, 200, "OK")
         if 'Content-Type' in chunk.headers or len(chunk.data)>0:
-            self._send_to_incoming(chunk)
+            self.incoming.send(chunk)
         self.reader_job = proc.spawn(self._reader, self.debug)
+        self.writer_job = proc.spawn(self._writer)
 
     def make_message(self, msg, content_type):
         chunk = self.make_chunk(data=msg)

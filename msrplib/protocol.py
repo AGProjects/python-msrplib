@@ -4,7 +4,10 @@ from collections import deque
 import re
 
 from twisted.protocols.basic import LineReceiver
+from twisted.internet.interfaces import IHalfCloseableProtocol
+from zope.interface import implements
 from application.system import default_host_ip
+
 from msrplib.util import random_string
 
 class MSRPError(Exception):
@@ -384,8 +387,10 @@ class MSRPProtocol(LineReceiver):
     MAX_LENGTH = 16384
     MAX_LINES = 64
 
-    def __init__(self):
-        self.peer = None
+    implements(IHalfCloseableProtocol)
+
+    def __init__(self, recepient):
+        self._recepient = recepient
         self._reset()
 
     def _reset(self):
@@ -393,22 +398,22 @@ class MSRPProtocol(LineReceiver):
         self.line_count = 0
 
     def connectionMade(self):
-        self.peer = self.factory.get_peer(self)
+        self._recepient._got_transport(self.transport)
 
     def lineReceived(self, line):
-        if self.data: 
+        if self.data:
             if len(line) == 0:
                 self.term_buf_len = 12 + len(self.data.transaction_id)
                 self.term_buf = ""
                 self.term = re.compile("^(.*)\r\n-------%s([$#+])\r\n(.*)$" % re.escape(self.data.transaction_id), re.DOTALL)
-                self.peer.data_start(self.data)
+                self._recepient._data_start(self.data)
                 self.setRawMode()
             else:
                 match = self.term.match(line)
                 if match:
                     continuation = match.group(1)
-                    self.peer.data_start(self.data)
-                    self.peer.data_end(continuation)
+                    self._recepient._data_start(self.data)
+                    self._recepient._data_end(continuation)
                     self._reset()
                 else:
                     self.line_count += 1
@@ -452,17 +457,23 @@ class MSRPProtocol(LineReceiver):
             contents, continuation, extra = match.groups()
             contents = contents[len(self.term_buf):]
             if contents:
-                self.peer.write_chunk(contents)
-            self.peer.data_end(continuation)
+                self._recepient._write_chunk(contents)
+            self._recepient._data_end(continuation)
             self._reset()
             self.setLineMode(extra)
         else:
-            self.peer.write_chunk(data)
+            self._recepient._write_chunk(data)
             self.term_buf = match_data[-self.term_buf_len:]
 
     def connectionLost(self, reason):
-        if self.peer:
-            self.peer.connection_lost(reason.value)
+        self._recepient._connectionLost(reason)
+
+    def readConnectionLost(self):
+        self._recepient._readConnectionLost()
+
+    def writeConnectionLost(self):
+        self._recepient._writeConnectionLost()
+
 
 _re_uri = re.compile("^(?P<scheme>.*?)://(((?P<user>.*?)@)?(?P<host>.*?)(:(?P<port>[0-9]+?))?)(/(?P<session_id>.*?))?;(?P<transport>.*?)(;(?P<parameters>.*))?$")
 def parse_uri(uri_str):
