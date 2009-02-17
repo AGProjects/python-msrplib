@@ -122,6 +122,8 @@ class MSRPTransport(GreenTransportBase):
     protocol_class = MSRPProtocol_withLogging
     RESPONSE_TIMEOUT = 30
     debug = True
+    _got_data = None
+    SHUTDOWN_TIMEOUT = 1
 
     def __init__(self, local_uri, traffic_logger=None, state_logger=None,
                  allowed_content_types=None, debug=None, incoming=None):
@@ -180,7 +182,7 @@ class MSRPTransport(GreenTransportBase):
         chunk.add_header(protocol.FromPathHeader([self.local_uri]))
         # Byte-Range and Message-ID are neccessary because otherwise msrprelay does not work
         chunk.add_header(protocol.ByteRangeHeader((1, len(data), len(data))))
-        chunk.add_header(protocol.MessageIDHeader(str(random_string(10))))
+        chunk.add_header(protocol.MessageIDHeader(random_string(10)))
         chunk.data = data
         chunk.contflag = contflag
         return chunk
@@ -200,14 +202,10 @@ class MSRPTransport(GreenTransportBase):
     def _write_chunk(self, contents):
         self._queue.send((write_chunk, contents))
 
-    _got_data = None
-
     def initiate_shutdown(self):
         # XXX break the current chunk
         self._disconnecting = True
         self.outgoing.send(None)
-
-    SHUTDOWN_TIMEOUT = 1
 
     def shutdown(self):
         """Shutdown the connection.
