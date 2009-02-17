@@ -191,14 +191,12 @@ class FileWithTell(object):
     def tell(self):
         return self.writecount
 
-__original_sys_stdout__ = sys.stdout
-
 def hook_std_output():
     "add `tell' method to sys.stdout, so that it's usable with HeaderLogger"
-    sys.stdout = FileWithTell(__original_sys_stdout__)
+    sys.stdout = FileWithTell(sys.__stdout__)
 
 def restore_std_output():
-    sys.stdout = __original_sys_stdout__
+    sys.stdout = sys.__stdout__
 
 
 if __name__=='__main__':
