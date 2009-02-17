@@ -121,11 +121,13 @@ class StateLogger:
     prefix = ''
     debug = False
 
-    def __init__(self, write_func=None, prefix=None):
+    def __init__(self, write_func=None, prefix=None, debug=None):
         if write_func is not None:
             self._write = write_func
         if prefix is not None:
             self.prefix = prefix
+        if debug is not None:
+            self.debug = debug
 
     def _write(self, msg):
         sys.stdout.write(msg + '\n')
