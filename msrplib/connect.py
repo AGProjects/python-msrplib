@@ -39,9 +39,9 @@ only respected by AcceptorDirect.
 """
 
 from __future__ import with_statement
+import random
 from twisted.internet.address import IPv4Address
 from application.system import default_host_ip
-
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet.coros import event
 from eventlet.api import timeout
@@ -49,7 +49,6 @@ from eventlet.proc import spawn_greenlet
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest
-from msrplib.util import random_string
 from msrplib.digest import process_www_authenticate
 
 __all__ = ['MSRPRelaySettings', 'MSRPConnectFactory', 'MSRPAcceptFactory']
@@ -261,7 +260,7 @@ class RelayConnectBase(ConnectBase):
         conn = self._connect(local_uri, self.relay)
         try:
             local_uri.port = conn.getHost().port
-            msrpdata = protocol.MSRPData(method="AUTH", transaction_id=random_string(12))
+            msrpdata = protocol.MSRPData(method="AUTH", transaction_id='%x' % random.getrandbits(64))
             msrpdata.add_header(protocol.ToPathHeader([self.relay.uri_domain]))
             msrpdata.add_header(protocol.FromPathHeader([local_uri]))
             response = _deliver_chunk(conn, msrpdata)
@@ -269,7 +268,7 @@ class RelayConnectBase(ConnectBase):
                 www_authenticate = response.headers["WWW-Authenticate"]
                 auth, rsp_auth = process_www_authenticate(self.relay.username, self.relay.password, "AUTH",
                                                           str(self.relay.uri_domain), **www_authenticate.decoded)
-                msrpdata.transaction_id = random_string(12)
+                msrpdata.transaction_id = '%x' % random.getrandbits(64)
                 msrpdata.add_header(protocol.AuthorizationHeader(auth))
                 response = _deliver_chunk(conn, msrpdata)
             if response.code != 200:
