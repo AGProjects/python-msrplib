@@ -191,6 +191,18 @@ class ByteRangeHeader(MSRPNamedHeader):
             total = "*"
         return "%s-%s/%s" % (fro, to, total)
 
+    @property
+    def fro(self):
+        return self.decoded[0]
+
+    @property
+    def to(self):
+        return self.decoded[1]
+
+    @property
+    def total(self):
+        return self.decoded[2]
+
 class StatusHeader(MSRPNamedHeader):
     name = "Status"
 
