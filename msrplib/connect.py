@@ -289,26 +289,13 @@ class AcceptorRelay(RelayConnectBase):
         finally:
             self.msrp = None
 
-# the 2 classes below look plain weird and I don't see a use case for such
-# weirdness anymore. to be replaced with functions get_connector, get_acceptor
+def get_connector(relay, **kwargs):
+    if relay is None:
+        return ConnectorDirect(**kwargs)
+    return ConnectorRelay(relay, **kwargs)
 
-class MSRPConnectFactory:
-    ConnectorDirect = ConnectorDirect
-    ConnectorRelay = ConnectorRelay
-
-    @classmethod
-    def new(cls, relay, **kwargs):
-        if relay is None:
-            return cls.ConnectorDirect(**kwargs)
-        return cls.ConnectorRelay(relay, **kwargs)
-
-class MSRPAcceptFactory(object):
-    AcceptorDirect = AcceptorDirect
-    AcceptorRelay = AcceptorRelay
-
-    @classmethod
-    def new(cls, relay, **kwargs):
-        if relay is None:
-            return cls.AcceptorDirect(**kwargs)
-        return cls.AcceptorRelay(relay, **kwargs)
+def get_acceptor(relay, **kwargs):
+    if relay is None:
+        return AcceptorDirect(**kwargs)
+    return AcceptorRelay(relay, **kwargs)
 
