@@ -26,12 +26,10 @@ class MSRPTransactionError(MSRPError):
             raise TypeError("must provide 'code'")
 
     def __str__(self):
-        try:
-            comment = self.comment
-        except AttributeError:
-            return str(self.code)
-        else:
+        if hasattr(self, 'comment'):
             return '%s %s' % (self.code, self.comment)
+        else:
+            return str(self.code)
 
 # XXX from these exception names it's unclear whether it's raised
 # because of an error response from a remote party or it's a locally
