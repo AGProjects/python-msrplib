@@ -433,7 +433,7 @@ class MSRPTransport(GreenTransportBase):
             self.write_chunk(chunk)
         except:
             if event is not None:
-                self.expected_response.pop(id, None)
+                self.expected_responses.pop(id, None)
             raise
         else:
             if event is not None:
