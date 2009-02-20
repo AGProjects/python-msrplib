@@ -2,13 +2,13 @@
 
 from collections import deque
 import re
+import random
 
 from twisted.protocols.basic import LineReceiver
 from twisted.internet.interfaces import IHalfCloseableProtocol
 from zope.interface import implements
 from application.system import default_host_ip
 
-from msrplib.util import random_string
 
 class MSRPError(Exception):
     pass
@@ -566,7 +566,7 @@ class URI(ConnectInfo):
         ConnectInfo.__init__(self, host, use_tls=use_tls, port=port, credentials=credentials)
         self.user = user
         if session_id is None:
-            session_id=random_string(12)
+            session_id = '%x' % random.getrandbits(80)
         self.session_id = session_id
         self.transport = transport
         if parameters is None:
