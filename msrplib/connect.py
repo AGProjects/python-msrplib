@@ -1,7 +1,44 @@
 # Copyright (C) 2008 AG Projects. See LICENSE for details
+"""Establish MSRP connection.
+
+This module provides means to obtain a connected and bound MSRPTransport
+instance. It uniformly handles 4 different configurations you may find your
+client engaged in:
+
+    1. Calling endpoint, not using a relay (ConnectorDirect)
+    2. Answering endpoint, not using a relay (AcceptorDirect)
+    3. Calling endpoint, using a relay (ConnectorRelay)
+    4. Answering endpoint, using a relay (AcceptorRelay)
+
+The answering endpoint may skip using the relay if sure that it's accessible
+directly. The calling endpoint is unlikely to need the relay.
+
+Once you have an instance of the right class (use the convenience functions
+get_connector() and get_acceptor() to get one), the procedure to establish the
+connection is the same:
+
+    full_local_path = connector.prepare()
+    try:
+        ... put full_local_path in SDP 'a:path' attribute
+        ... get full_remote_path from remote's 'a:path: attribute
+        ... (the order of the above steps is reversed if you're the
+        ... answering party, but that does not affect connector's usage)
+        msrptransport = connector.complete(full_remote_path)
+    finally:
+        connector.cleanup()
+
+To customize connection's parameters, create a new protocol.URI object and pass
+it to prepare() function, e.g.
+
+    local_uri = protocol.URI(use_tls=False, port=5000)
+    connector.prepare(local_uri)
+
+prepare() may update local_uri in place with the actual connection parameters
+used (e.g. if you specified port=0). 'port' attribute of local_uri is currently
+only respected by AcceptorDirect.
+"""
 
 from __future__ import with_statement
-
 from twisted.internet.address import IPv4Address
 from application.system import default_host_ip
 
