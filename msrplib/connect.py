@@ -51,7 +51,16 @@ from msrplib import protocol, MSRPError
 from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest
 from msrplib.digest import process_www_authenticate
 
-__all__ = ['MSRPRelaySettings', 'MSRPConnectFactory', 'MSRPAcceptFactory']
+__all__ = ['MSRPRelaySettings',
+           'MSRPTimeout',
+           'MSRPConnectTimeout',
+           'MSRPRelayConnectTimeout',
+           'MSRPIncomingConnectTimeout',
+           'MSRPBindSessionTimeout',
+           'MSRPRelayAuthError',
+           'MSRPAuthTimeout',
+           'get_connector',
+           'get_acceptor']
 
 class MSRPRelaySettings(protocol.ConnectInfo):
     use_tls = True
