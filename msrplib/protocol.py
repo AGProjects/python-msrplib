@@ -357,6 +357,13 @@ class MSRPData(object):
         return x.decoded
 
     @property
+    def byte_range(self):
+        x = self.headers.get('Byte-Range')
+        if x is None:
+            return x
+        return x.decoded
+
+    @property
     def failure_report(self):
         if "Failure-Report" in self.headers:
             return self.headers["Failure-Report"].decoded
