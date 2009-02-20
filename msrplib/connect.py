@@ -122,27 +122,20 @@ class ConnectBase(object):
     MSRPTransportClass = MSRPTransport
     SRVConnectorClass = None
 
-    def __init__(self, **kwargs):
-        if 'MSRPTransportClass' in kwargs:
-            self.MSRPTransportClass = kwargs.pop('MSRPTransportClass')
-        self.kwargs = kwargs
-
-    def _get_state_logger(self):
-        return self.kwargs.get('state_logger')
-
-    def _set_state_logger(self, state_logger):
-        self.kwargs['state_logger'] = state_logger
-
-    state_logger = property(_get_state_logger, _set_state_logger)
+    def __init__(self, traffic_logger=None, state_logger=None, MSRPTransportClass=None):
+        if MSRPTransportClass is not None:
+            self.MSRPTransportClass = MSRPTransportClass
+        self.traffic_logger = traffic_logger
+        self.state_logger = state_logger
 
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
 
     def _connect(self, local_uri, remote_uri):
-        from twisted.internet import reactor
         if self.state_logger:
             self.state_logger.report_connecting(remote_uri)
-        creator = GreenClientCreator(reactor, self.MSRPTransportClass, local_uri, **self.kwargs)
+        creator = GreenClientCreator(gtransport_class=self.MSRPTransportClass, local_uri=local_uri,
+                                     traffic_logger=self.traffic_logger, state_logger=self.state_logger)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
@@ -193,7 +186,8 @@ class AcceptorDirect(ConnectBase):
     def _listen(self, local_uri, handler):
         # QQQ use ip from local_uri as binding interface?
         from twisted.internet import reactor
-        factory = SpawnFactory(handler, self.MSRPTransportClass, local_uri, **self.kwargs)
+        factory = SpawnFactory(handler, self.MSRPTransportClass, local_uri,
+                               traffic_logger=self.traffic_logger, state_logger=self.state_logger)
         listenFuncName = 'listen' + local_uri.protocol_name
         listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
         port = getattr(reactor, listenFuncName)(*listenFuncArgs)
