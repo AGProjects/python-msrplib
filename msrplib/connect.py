@@ -244,9 +244,9 @@ class AcceptorDirect(ConnectBase):
         self.transport_event = None
 
 def _deliver_chunk(msrp, chunk):
-    msrp.write_chunk(chunk)
+    msrp.write(chunk.encode())
     with MSRPAuthTimeout.timeout():
-        response = msrp._wait_chunk()
+        response = msrp.read_chunk()
     if response.method is not None:
         raise MSRPBadRequest
     if response.transaction_id!=chunk.transaction_id:
@@ -276,7 +276,7 @@ class RelayConnectBase(ConnectBase):
                 response = _deliver_chunk(conn, msrpdata)
             if response.code != 200:
                 raise MSRPRelayAuthError(comment=response.comment, code=response.code)
-            conn.use_path(list(response.headers["Use-Path"].decoded))
+            conn.set_local_path(list(response.headers["Use-Path"].decoded))
             if self.state_logger:
                 self.state_logger.report_session_reserved(conn)
         except:

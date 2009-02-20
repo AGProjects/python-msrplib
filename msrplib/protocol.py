@@ -5,8 +5,6 @@ import re
 import random
 
 from twisted.protocols.basic import LineReceiver
-from twisted.internet.interfaces import IHalfCloseableProtocol
-from zope.interface import implements
 from application.system import default_host_ip
 
 
@@ -291,6 +289,11 @@ class ContentDispositionHeader(MSRPNamedHeader):
 
 class MSRPData(object):
 
+    # for chunks that are generated locally by splitting a big incoming chunk
+    # segment will be a sequential index, starting with 1
+    segment = None
+    final = True
+
     def __init__(self, transaction_id, method = None, code = None, comment = None):
         self.transaction_id = transaction_id
         self.method = method
@@ -406,8 +409,6 @@ class MSRPProtocol(LineReceiver):
     MAX_LENGTH = 16384
     MAX_LINES = 64
 
-    implements(IHalfCloseableProtocol)
-
     def __init__(self, recepient):
         self._recepient = recepient
         self._reset()
@@ -476,22 +477,16 @@ class MSRPProtocol(LineReceiver):
             contents, continuation, extra = match.groups()
             contents = contents[len(self.term_buf):]
             if contents:
-                self._recepient._write_chunk(contents)
+                self._recepient._data_write(contents, final=True)
             self._recepient._data_end(continuation)
             self._reset()
             self.setLineMode(extra)
         else:
-            self._recepient._write_chunk(data)
+            self._recepient._data_write(data, final=False)
             self.term_buf = match_data[-self.term_buf_len:]
 
     def connectionLost(self, reason):
         self._recepient._connectionLost(reason)
-
-    def readConnectionLost(self):
-        self._recepient._readConnectionLost()
-
-    def writeConnectionLost(self):
-        self._recepient._writeConnectionLost()
 
 
 _re_uri = re.compile("^(?P<scheme>.*?)://(((?P<user>.*?)@)?(?P<host>.*?)(:(?P<port>[0-9]+?))?)(/(?P<session_id>.*?))?;(?P<transport>.*?)(;(?P<parameters>.*))?$")
