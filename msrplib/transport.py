@@ -485,7 +485,7 @@ class MSRPSession(object):
             self.state_logger.dbg('writer: exiting because of %r' % (ex, ))
         except:
             self.state_logger.dbg('writer: losing connection because of %r' % (sys.exc_info(), ))
-            self.msrp.loseConnection(sync=false)
+            self.msrp.loseConnection(sync=False)
             raise
         finally:
             self.set_state('CLOSING')
