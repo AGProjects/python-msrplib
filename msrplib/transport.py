@@ -280,7 +280,7 @@ class MSRPTransport(GreenTransportBase):
         self.write(chunk.encode())
         response = self.read_chunk()
         if response.code != 200:
-            self.loseConnection()
+            self.loseConnection(sync=False)
             raise MSRPNoSuchSessionError('Cannot bind session: %s' % response)
 
     def write_response(self, chunk, code, comment):
