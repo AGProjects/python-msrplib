@@ -5,6 +5,7 @@ import sys
 import random
 from copy import copy
 from time import time
+from application import log
 from twisted.internet.error import ConnectionClosed, ConnectionDone
 from gnutls.errors import GNUTLSError
 from eventlet import api, coros, proc
