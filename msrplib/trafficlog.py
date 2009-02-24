@@ -1,3 +1,5 @@
+# Copyright (C) 2008-2009 AG Projects. See LICENSE for details
+
 import sys
 import datetime
 from twisted.internet.error import ConnectionDone

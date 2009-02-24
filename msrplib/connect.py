@@ -1,4 +1,4 @@
-# Copyright (C) 2008 AG Projects. See LICENSE for details
+# Copyright (C) 2008-2009 AG Projects. See LICENSE for details
 """Establish MSRP connection.
 
 This module provides means to obtain a connected and bound MSRPTransport
