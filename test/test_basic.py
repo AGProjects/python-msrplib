@@ -23,8 +23,8 @@ from eventlet import proc
 from msrplib.connect import get_connector, get_acceptor, MSRPRelaySettings, ConnectBase
 from msrplib import protocol as pr
 from msrplib.trafficlog import TrafficLogger, StateLogger, hook_std_output
-from msrplib.transport import MSRPTransport, MSRPSession
-from msrplib.transport import MSRPSessionError
+from msrplib.transport import MSRPTransport
+from msrplib.session import MSRPSession, MSRPSessionError
 
 # add tell() method to stdout (needed by TrafficLogger)
 hook_std_output()
