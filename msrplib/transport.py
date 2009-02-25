@@ -131,7 +131,7 @@ class MSRPTransport(GreenTransportBase):
         return self.remote_path + [self.remote_uri]
 
     def make_chunk(self, transaction_id=None, method='SEND', code=None, comment=None, data='',
-                   contflag=None, start=1, end=None, length=None):
+                   contflag=None, start=1, end=None, length=None, message_id=None):
         """Make a new MSRPData object with From and To headers set up"""
         if transaction_id is None:
             transaction_id = '%x' % random.getrandbits(64)
@@ -148,7 +148,10 @@ class MSRPTransport(GreenTransportBase):
             else:
                 contflag = '+'
         chunk.add_header(protocol.ByteRangeHeader((start, end, length)))
-        chunk.add_header(protocol.MessageIDHeader('%x' % random.getrandbits(64)))
+        if message_id is None:
+            chunk.add_header(protocol.MessageIDHeader('%x' % random.getrandbits(64)))
+        else:
+            chunk.add_header(protocol.MessageIDHeader(message_id))
         # Byte-Range and Message-ID are neccessary because otherwise msrprelay does not work
         chunk.data = data
         chunk.contflag = contflag
