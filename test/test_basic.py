@@ -26,7 +26,7 @@ from msrplib.connect import get_connector, get_acceptor, MSRPRelaySettings, Conn
 from msrplib import protocol as pr
 from msrplib.trafficlog import TrafficLogger, StateLogger, hook_std_output
 from msrplib.transport import MSRPTransport
-from msrplib.session import MSRPSession, MSRPSessionError
+from msrplib.session import MSRPSession, MSRPSessionError, LocalResponse
 
 # add tell() method to stdout (needed by TrafficLogger)
 hook_std_output()
@@ -168,11 +168,8 @@ class MSRPTransportTest_TLS(TLSMixin, MSRPTransportTest):
 class MSRPSessionTest(TestBase):
 
     def deliver_chunk(self, msrp, chunk):
-        e = event()
-        msrp.send_chunk(chunk, e)
         with api.timeout(self.RESPONSE_TIMEOUT, api.TimeoutError('Did not received transaction response')):
-            response = e.wait()
-        return response
+            return msrp.deliver_chunk(chunk)
 
     def _make_hello(self, session):
         x = session.msrp.make_chunk(data='hello')
@@ -195,12 +192,19 @@ class MSRPSessionTest(TestBase):
         client.shutdown()
         server.shutdown()
 
+    def assertRaisesCode(self, exception, code, func, *args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except exception, ex:
+            self.assertEqual(ex.code, code)
+        else:
+            raise AssertionError('%r didnt raise %s' % (func, exception))
+
     def test_send_chunk_response_localtimeout(self):
         client, server = proc.waitall(self.setup_two_endpoints())
         client, server = MSRPSession_ZeroTimeout(client), MSRPSession(server)
         x = self._make_hello(client)
-        response = self.deliver_chunk(client, x)
-        assert response.code == 408, response
+        self.assertRaisesCode(LocalResponse, 408, self.deliver_chunk, client, x)
         y = server.receive_chunk()
         self.assertSameData(x, y)
         #self.assertNoIncoming(0.1, client, server)

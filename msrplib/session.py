@@ -71,13 +71,13 @@ class MSRPSession(object):
 
     def _handle_incoming_response(self, chunk):
         try:
-            event, timer = self.expected_responses.pop(chunk.transaction_id)
+            response_cb, timer = self.expected_responses.pop(chunk.transaction_id)
         except KeyError:
             pass
         else:
             if timer is not None:
                 timer.cancel()
-            event.send(chunk)
+            response_cb(chunk)
 
     def _check_incoming_SEND(self, chunk):
         if chunk.method=='SEND' and chunk.segment is None:
@@ -107,7 +107,7 @@ class MSRPSession(object):
         """Wait forever for new chunks. Send the good ones to self.incoming queue.
 
         If a response to a previously sent chunk is received, pop the corresponding
-        event from self.expected_responses and send the response there.
+        response_cb from self.expected_responses and send the response there.
         """
         try:
             self.writer_job.link(self.reader_job)
@@ -184,75 +184,83 @@ class MSRPSession(object):
         finally:
             self.set_state('CLOSING')
 
-    def send_chunk(self, chunk, event=None):
-        """Send `chunk'. Report the result via `event'.
+    def send_chunk(self, chunk, response_cb=None):
+        """Send `chunk'. Report the result via `response_cb'.
 
-        When `event' argument is present, it will be used to report
-        the response to the caller. When a real response is received,
-        `event' is fired with MSRPData object. When the response is
-        generated locally it's a LocalResponse instance.
+        When `response_cb' argument is present, it will be used to report
+        the response to the caller. When a response is received or generated
+        locally, `response_cb' is called with one argument. The function
+        must do something quickly and must not block, because otherwise it would
+        the reader greenlet.
 
         If no response was received after RESPONSE_TIMEOUT seconds,
         * 408 response is generated if Failure-Report was 'yes' or absent
         * 200 response is generated if Failure-Report was 'partial' or 'no'
 
-        Note that it's rather wasteful to provide `event' argument other than None
+        Note that it's rather wasteful to provide `response_cb' argument other than None
         for chunks with Failure-Report='no' since it will always fire 30 seconds later
         with 200 result (unless the other party is broken and ignores Failure-Report header)
 
         If sending is impossible raise MSRPSessionError.
         """
+        assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
+        if response_cb is not None and not callable(response_cb):
+            raise TypeError('response_cb must be callable: %r' % (response_cb, ))
         if self.state != 'CONNECTED':
             raise MSRPSessionError('Cannot send chunk because MSRPSession is %s' % self.state)
         if self.msrp._disconnected_event.ready():
             raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
-        self.outgoing.send((chunk, event))
+        self.outgoing.send((chunk, response_cb))
 
-    def _write_chunk(self, chunk, event=None):
+    def _write_chunk(self, chunk, response_cb=None):
         id = chunk.transaction_id
         assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
-        if event is not None:
+        if response_cb is not None:
             # since reader is in another greenlet and write() will switch the greenlets,
-            # let's setup response's event and timer before write() call, just in case
-            event_and_timer = [event, None]
-            self.expected_responses[id] = event_and_timer
+            # let's setup response_cb and timer before write() call, just in case
+            cb_and_timer = [response_cb, None]
+            self.expected_responses[id] = cb_and_timer
         try:
             self.msrp.write(chunk.encode())
         except Exception:
-            if event is not None:
+            if response_cb is not None:
                 self.expected_responses.pop(id, None)
             raise
         else:
-            if event is not None:
+            if response_cb is not None:
                 timeout_error = Response408Timeout if chunk.failure_report=='yes' else Response200OK
                 timer = api.get_hub().schedule_call_global(self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
                 self.last_expected_response = time() + self.RESPONSE_TIMEOUT
-                event_and_timer[1] = timer
+                cb_and_timer[1] = timer
 
     def _response_timeout(self, id, timeout_error):
-        event, timer = self.expected_responses.pop(id, (None, None))
-        if event is not None:
-            event.send(timeout_error)
+        response_cb, timer = self.expected_responses.pop(id, (None, None))
+        if response_cb is not None:
+            response_cb(timeout_error)
             if timer is not None:
                 timer.cancel()
 
     def deliver_chunk(self, chunk, event=None):
-        """Send chunk, return the transaction response.
-        Return None immediatelly if chunk's Failure-Report is 'no'.
+        """Send chunk, block until transaction response is received
+        (if Failure-Report header is not 'no'). Return the transaction response
+        if it's a success, raise MSRPTransactionError if it's not.
+
+        If chunk's Failure-Report is 'no', return None immediatelly.
         """
         if chunk.failure_report!='no' and event is None:
             event = coros.event()
-        self.send_chunk(chunk, event)
+        self.send_chunk(chunk, event.send)
         if event is not None:
-            return event.wait()
+            response = event.wait()
+            if isinstance(response, Exception):
+                raise response
+            elif 200 <= response.code <= 299:
+                return response
+            raise MSRPTransactionError(comment=response.comment, code=response.code)
 
-    def make_message(self, msg, content_type, failure_report=None, success_report=None):
-        chunk = self.msrp.make_chunk(data=msg)
+    def make_message(self, msg, content_type, message_id=None):
+        chunk = self.msrp.make_chunk(data=msg, message_id=message_id)
         chunk.add_header(protocol.ContentTypeHeader(content_type))
-        if failure_report is not None:
-            chunk.add_header(protocol.FailureReportHeader(failure_report))
-        if success_report is not None:
-            chunk.add_header(protocol.SuccessReportHeader(success_report))
         return chunk
 
     def send_message(self, msg, content_type):
