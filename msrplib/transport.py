@@ -175,10 +175,10 @@ class MSRPTransport(GreenTransportBase):
         else:
             self._queue.send((data_final_write, contents))
 
-    def write(self, data):
+    def write(self, data, sync=True):
         if self.traffic_logger:
             self.traffic_logger.report_out(data, self.transport)
-        return GreenTransportBase.write(self, data)
+        return GreenTransportBase.write(self, data, sync)
 
     def read_chunk(self, size=None):
         """Wait for a new chunk and return it.
