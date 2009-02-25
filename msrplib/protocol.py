@@ -231,6 +231,14 @@ class StatusHeader(MSRPNamedHeader):
             encoded += " %s" % comment
         return encoded
 
+    @property
+    def code(self):
+        return self.decoded[0]
+
+    @property
+    def comment(self):
+        return self.decoded[1]
+
 class ExpiresHeader(IntegerHeader):
     name = "Expires"
 
