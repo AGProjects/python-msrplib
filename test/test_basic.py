@@ -26,7 +26,7 @@ from msrplib.connect import get_connector, get_acceptor, MSRPRelaySettings, Conn
 from msrplib import protocol as pr
 from msrplib.trafficlog import TrafficLogger, StateLogger, hook_std_output
 from msrplib.transport import MSRPTransport
-from msrplib.session import MSRPSession, MSRPSessionError, LocalResponse
+from msrplib.session import GreenMSRPSession, MSRPSessionError, LocalResponse
 
 # add tell() method to stdout (needed by TrafficLogger)
 hook_std_output()
@@ -58,7 +58,7 @@ def _connect_msrp(local_event, remote_event, msrp, local_uri):
     finally:
         msrp.cleanup()
 
-class MSRPSession_ZeroTimeout(MSRPSession):
+class GreenMSRPSession_ZeroTimeout(GreenMSRPSession):
     RESPONSE_TIMEOUT = 0
 
 class InjectedError(Exception):
@@ -185,7 +185,7 @@ class MSRPSessionTest(TestBase):
 
     def test_deliver_chunk(self):
         client, server = proc.waitall(self.setup_two_endpoints())
-        client, server = MSRPSession(client), MSRPSession(server)
+        client, server = GreenMSRPSession(client), GreenMSRPSession(server)
         self._test_deliver_chunk(client, server)
         self._test_deliver_chunk(server, client)
         #self.assertNoIncoming(0.1, client, server)
@@ -202,7 +202,7 @@ class MSRPSessionTest(TestBase):
 
     def test_send_chunk_response_localtimeout(self):
         client, server = proc.waitall(self.setup_two_endpoints())
-        client, server = MSRPSession_ZeroTimeout(client), MSRPSession(server)
+        client, server = GreenMSRPSession_ZeroTimeout(client), GreenMSRPSession(server)
         x = self._make_hello(client)
         self.assertRaisesCode(LocalResponse, 408, self.deliver_chunk, client, x)
         y = server.receive_chunk()
@@ -214,7 +214,7 @@ class MSRPSessionTest(TestBase):
     def test_close_connection__receive(self):
         client, server = proc.waitall(self.setup_two_endpoints())
         assert isinstance(client, MSRPTransport), repr(client)
-        client, server = MSRPSession(client), MSRPSession(server)
+        client, server = GreenMSRPSession(client), GreenMSRPSession(server)
         client.shutdown()
         self.assertRaises(ConnectionDone, server.receive_chunk)
         self.assertRaises(MSRPSessionError, server.send_chunk, self._make_hello(server))
@@ -225,7 +225,7 @@ class MSRPSessionTest(TestBase):
         # if reader fails with an exception, receive_chunk raises that exception
         # send_chunk raises an error and the other party gets closed connection
         client, server = proc.waitall(self.setup_two_endpoints())
-        client, server = MSRPSession(client), MSRPSession(server)
+        client, server = GreenMSRPSession(client), GreenMSRPSession(server)
         client.reader_job.kill(InjectedError("Killing client's reader_job"))
         self.assertRaises(InjectedError, client.receive_chunk)
         self.assertRaises(MSRPSessionError, client.send_chunk, self._make_hello(client))
@@ -234,7 +234,7 @@ class MSRPSessionTest(TestBase):
 
     def test_reader_failed__send(self):
         client, server = proc.waitall(self.setup_two_endpoints())
-        client, server = MSRPSession(client), MSRPSession(server)
+        client, server = GreenMSRPSession(client), GreenMSRPSession(server)
         client.reader_job.kill(InjectedError("Killing client's reader_job"))
         api.sleep(0.1)
         self.assertRaises(MSRPSessionError, client.send_chunk, self._make_hello(client))

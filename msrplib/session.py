@@ -4,6 +4,7 @@ from __future__ import with_statement
 import sys
 from time import time
 from twisted.internet.error import ConnectionClosed, ConnectionDone
+from twisted.python.failure import Failure
 from gnutls.errors import GNUTLSError
 from eventlet import api, coros, proc
 from eventlet.twistedutil.protocol import ValueQueue
@@ -36,10 +37,12 @@ class MSRPSession(object):
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
 
-    def __init__(self, msrptransport, allowed_content_types=None):
+    def __init__(self, msrptransport, allowed_content_types=None, on_incoming_cb=None):
         self.msrp = msrptransport
         self.state_logger = self.msrp.state_logger
         self.allowed_content_types = allowed_content_types
+        if on_incoming_cb is not None:
+            self._on_incoming_cb = on_incoming_cb
         self.expected_responses = {}
         #self.expected_success_reports = {}
         self.outgoing = coros.queue()
@@ -51,8 +54,9 @@ class MSRPSession(object):
         # to responses and success reports. (XXX it could now discard incoming data chunks
         # with direct write() since writer is dead)
         self.reader_job.link(self.writer_job)
-        self.incoming = ValueQueue()
         self.last_expected_response = 0
+        if not callable(self._on_incoming_cb):
+            raise TypeError('on_incoming_cb must be callable: %r' % (self._on_incoming_cb, ))
 
     def set_state(self, state):
         self.state_logger.dbg('%s (was %s)' % (state, self.state))
@@ -101,14 +105,15 @@ class MSRPSession(object):
             if response is not None:
                 self.outgoing.send((response, None))
         if code==200:
-            self.incoming.send(chunk)
+            self._on_incoming_cb(chunk)
 
     def _reader(self):
-        """Wait forever for new chunks. Send the good ones to self.incoming queue.
+        """Wait forever for new chunks. Notify the user about the good ones through self._on_incoming_cb.
 
         If a response to a previously sent chunk is received, pop the corresponding
         response_cb from self.expected_responses and send the response there.
         """
+        error = Failure(ConnectionDone())
         try:
             self.writer_job.link(self.reader_job)
             try:
@@ -119,7 +124,7 @@ class MSRPSession(object):
                     elif chunk.method=='SEND':
                         self._handle_incoming_SEND(chunk)
                     elif chunk.method=='REPORT':
-                        self.incoming.send(chunk)
+                        self._on_incoming_cb(chunk)
                     else:
                         response = make_response(chunk, '501', 'Method unknown')
                         self.outgoing.send((response, None))
@@ -150,19 +155,15 @@ class MSRPSession(object):
             self.state_logger.dbg('reader: done')
         except ConnectionClosedErrors, ex:
             self.state_logger.dbg('reader: exiting because of %r' % ex)
-            self.incoming.send_exception(ex)
+            error=Failure(ex)
         except:
             self.state_logger.dbg('reader: losing connection because of %r' % (sys.exc_info(), ))
-            self.incoming.send_exception(*sys.exc_info())
+            error=Failure()
             raise
         finally:
-            if not self.incoming.has_error():
-                self.incoming.send_exception(ConnectionDone)
+            self._on_incoming_cb(error=error)
             self.msrp.loseConnection(sync=False)
             self.set_state('DONE')
-
-    def receive_chunk(self):
-        return self.incoming.wait()
 
     def _writer(self):
         try:
@@ -272,6 +273,22 @@ class MSRPSession(object):
         chunk = self.make_message(msg, content_type)
         self.deliver_chunk(chunk)
         return chunk
+
+
+class GreenMSRPSession(MSRPSession):
+
+    def __init__(self, msrptransport, allowed_content_types=None):
+        MSRPSession.__init__(self, msrptransport, allowed_content_types)
+        self.incoming = ValueQueue()
+
+    def receive_chunk(self):
+        return self.incoming.wait()
+
+    def _on_incoming_cb(self, value=None, error=None):
+        if error is not None:
+            self.incoming.send_exception(error.type, error.value, error.tb)
+        else:
+            self.incoming.send(value)
 
 # TODO:
 # 413 - requires special action both in reader and in writer
