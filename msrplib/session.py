@@ -48,7 +48,7 @@ class MSRPSession(object):
         self.state = 'CONNECTED' # -> 'FLUSHING' -> 'CLOSING' -> 'DONE'
         # in FLUSHING writer sends only while there's something in the outgoing queue
         # then it exits and sets state to 'CLOSING' which makes reader only pay attention
-        # to responses and success reports. (XXX it can now discard incoming data chunks
+        # to responses and success reports. (XXX it could now discard incoming data chunks
         # with direct write() since writer is dead)
         self.reader_job.link(self.writer_job)
         self.incoming = ValueQueue()
