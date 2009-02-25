@@ -12,6 +12,7 @@ class ChunkParseError(MSRPError):
     """Failed to parse incoming chunk"""
 
 class MSRPTransactionError(MSRPError):
+
     def __init__(self, comment=None, code=None):
         if comment is not None:
             self.comment = comment
@@ -25,10 +26,6 @@ class MSRPTransactionError(MSRPError):
             return '%s %s' % (self.code, self.comment)
         else:
             return str(self.code)
-
-# XXX from these exception names it's unclear whether it's raised
-# because of an error response from a remote party or it's a locally
-# generated error (-- it's latter)
 
 class MSRPBadRequest(MSRPTransactionError):
     code = 400
