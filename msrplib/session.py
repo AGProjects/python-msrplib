@@ -37,10 +37,10 @@ class MSRPSession(object):
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
 
-    def __init__(self, msrptransport, allowed_content_types=None, on_incoming_cb=None):
+    def __init__(self, msrptransport, accept_types=None, on_incoming_cb=None):
         self.msrp = msrptransport
         self.state_logger = self.msrp.state_logger
-        self.allowed_content_types = allowed_content_types
+        self.accept_types = accept_types
         if on_incoming_cb is not None:
             self._on_incoming_cb = on_incoming_cb
         self.expected_responses = {}
@@ -90,8 +90,8 @@ class MSRPSession(object):
                 return error
             if chunk.headers.get('Content-Type') is None:
                 return MSRPBadContentType('Content-type header missing')
-            if self.allowed_content_types is not None:
-                if chunk.headers['Content-Type'].decoded not in self.allowed_content_types:
+            if self.accept_types is not None:
+                if chunk.headers['Content-Type'].decoded not in self.accept_types:
                     return MSRPBadContentType
 
     def _handle_incoming_SEND(self, chunk):
@@ -277,8 +277,8 @@ class MSRPSession(object):
 
 class GreenMSRPSession(MSRPSession):
 
-    def __init__(self, msrptransport, allowed_content_types=None):
-        MSRPSession.__init__(self, msrptransport, allowed_content_types)
+    def __init__(self, msrptransport, accept_types=None):
+        MSRPSession.__init__(self, msrptransport, accept_types)
         self.incoming = ValueQueue()
 
     def receive_chunk(self):
