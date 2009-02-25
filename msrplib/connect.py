@@ -152,7 +152,7 @@ class ConnectBase(object):
             self.state_logger.report_connected(msrp)
         return msrp
 
-    def cleanup(self):
+    def cleanup(self, sync=True):
         pass
 
 class ConnectorDirect(ConnectBase):
@@ -237,7 +237,7 @@ class AcceptorDirect(ConnectBase):
             raise
         return msrp
 
-    def cleanup(self):
+    def cleanup(self, sync=True):
         if self.listener is not None:
             self.listener.stopListening()
             self.listener = None
@@ -297,9 +297,9 @@ class RelayConnectBase(ConnectBase):
     def getHost(self):
         return self.msrp.getHost()
 
-    def cleanup(self):
+    def cleanup(self, sync=True):
         if self.msrp is not None:
-            self.msrp.loseConnection()
+            self.msrp.loseConnection(sync=sync)
             self.msrp = None
 
 class ConnectorRelay(RelayConnectBase):
