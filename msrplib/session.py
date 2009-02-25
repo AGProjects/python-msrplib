@@ -30,6 +30,23 @@ Response200OK = LocalResponse("OK", 200)
 Response408Timeout = LocalResponse("Timed out while waiting for transaction response", 408)
 
 
+def contains_mime_type(mimetypelist, mimetype):
+    """Return True if mimetypelist contains mimetype.
+    mimietypelist either contains the complete mime types, such as 'text/plain',
+    or simple patterns, like 'text/*', or simply '*'.
+    """
+    mimetype = mimetype.lower()
+    for pattern in mimetypelist:
+        pattern = pattern.lower()
+        if pattern == '*':
+            return True
+        if pattern == mimetype:
+            return True
+        if pattern.endswith('/*') and mimetype.startswith(pattern[:-1]):
+            return True
+    return False
+
+
 class MSRPSession(object):
     # if incoming chunk is bigger than this, split it (for the reporting purposes)
     INCOMING_CHUNK_SIZE = 1024*16
@@ -37,7 +54,7 @@ class MSRPSession(object):
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
 
-    def __init__(self, msrptransport, accept_types=None, on_incoming_cb=None):
+    def __init__(self, msrptransport, accept_types=['*'], on_incoming_cb=None):
         self.msrp = msrptransport
         self.state_logger = self.msrp.state_logger
         self.accept_types = accept_types
@@ -90,9 +107,8 @@ class MSRPSession(object):
                 return error
             if chunk.headers.get('Content-Type') is None:
                 return MSRPBadContentType('Content-type header missing')
-            if self.accept_types is not None:
-                if chunk.headers['Content-Type'].decoded not in self.accept_types:
-                    return MSRPBadContentType
+            if not contains_mime_type(self.accept_types, chunk.headers['Content-Type'].decoded):
+               return MSRPBadContentType
 
     def _handle_incoming_SEND(self, chunk):
         error = self._check_incoming_SEND(chunk)
