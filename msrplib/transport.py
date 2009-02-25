@@ -260,12 +260,12 @@ class MSRPTransport(GreenTransportBase):
             response = make_response(chunk, code, comment)
         except ChunkParseError, ex:
             log.error('Failed to generate a response: %s' % ex)
-            self.loseConnection(blocking=False)
+            self.loseConnection(sync=False)
             raise
         except Exception:
             log.error('Failed to generate a response')
             log.err()
-            self.loseConnection(blocking=False)
+            self.loseConnection(sync=False)
             raise
         else:
             if response is not None:
