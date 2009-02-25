@@ -20,18 +20,13 @@ class MSRPBadContentType(MSRPTransactionError):
     code = 415
     comment = 'Unsupported media type'
 
-class LocalResponse(object):
-
-    def __init__(self, code, comment):
-        self.code = code
-        self.comment = comment
+class LocalResponse(MSRPTransactionError):
 
     def __repr__(self):
         return '<LocalResponse %s %s>' % (self.code, self.comment)
 
-Response200OK = LocalResponse(200, "OK")
-Response408Timeout = LocalResponse(408, "Local transaction timed out")
-# XXX LocalResponse has the same attributes as MSRPTransactionError
+Response200OK = LocalResponse("OK", 200)
+Response408Timeout = LocalResponse("Timed out while waiting for transaction response", 408)
 
 
 class MSRPSession(object):
