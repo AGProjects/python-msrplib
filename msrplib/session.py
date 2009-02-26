@@ -293,7 +293,7 @@ class MSRPSession(object):
 
 class GreenMSRPSession(MSRPSession):
 
-    def __init__(self, msrptransport, accept_types=None):
+    def __init__(self, msrptransport, accept_types=['*']):
         MSRPSession.__init__(self, msrptransport, accept_types)
         self.incoming = ValueQueue()
 
