@@ -36,6 +36,9 @@ it to prepare() function, e.g.
 prepare() may update local_uri in place with the actual connection parameters
 used (e.g. if you specified port=0). 'port' attribute of local_uri is currently
 only respected by AcceptorDirect.
+
+Note that, acceptors and connectors are one-use only. MSRPServer, on the contrary,
+can be used multiple times.
 """
 
 from __future__ import with_statement
@@ -43,13 +46,14 @@ import random
 from twisted.internet.address import IPv4Address
 from application.system import default_host_ip
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
-from eventlet.coros import event
-from eventlet.api import timeout
-from eventlet.proc import spawn_greenlet
+from eventlet import coros
+from eventlet.api import timeout, sleep
+from eventlet.green.socket import gethostbyname
 
 from msrplib import protocol, MSRPError
-from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest
+from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest, MSRPNoSuchSessionError
 from msrplib.digest import process_www_authenticate
+from msrplib.trafficlog import StateLogger
 
 __all__ = ['MSRPRelaySettings',
            'MSRPTimeout',
@@ -59,6 +63,7 @@ __all__ = ['MSRPRelaySettings',
            'MSRPBindSessionTimeout',
            'MSRPRelayAuthError',
            'MSRPAuthTimeout',
+           'MSRPServer',
            'get_connector',
            'get_acceptor']
 
@@ -120,10 +125,13 @@ class MSRPAuthTimeout(MSRPTransactionError, TimeoutMixin):
     comment = 'No response to AUTH request'
     seconds = 30
 
+
 class ConnectBase(object):
     SRVConnectorClass = None
 
     def __init__(self, traffic_logger=None, state_logger=None):
+        if state_logger is None:
+            state_logger = StateLogger() # XXX remove it; remove state logger completely (but keep per-instance logging prefix)
         self.traffic_logger = traffic_logger
         self.state_logger = state_logger
 
@@ -335,4 +343,123 @@ def get_acceptor(relay, **kwargs):
     if relay is None:
         return AcceptorDirect(**kwargs)
     return AcceptorRelay(relay, **kwargs)
+
+
+class Notifier(coros.event):
+
+    def wait(self):
+        if self.ready():
+            self.reset()
+        return coros.event.wait(self)
+
+    def send(self, value=None, exc=None):
+        if self.ready():
+            self.reset()
+        return coros.event.send(self, value, exc=exc)
+
+
+class MSRPServer(ConnectBase):
+    """Manage listening sockets. Bind incoming requests."""
+
+    CLOSE_TIMEOUT = MSRPBindSessionTimeout.seconds * 2
+
+    def __init__(self, traffic_logger=None, state_logger=None):
+        ConnectBase.__init__(self, traffic_logger, state_logger)
+        self.ports = {} # maps interface -> port -> (use_tls, listening Port)
+        self.queue = coros.queue()
+        self.expected_local_uris = set()
+        self.expected_remote_paths = {} # maps full_remote_path -> event
+        self.new_full_remote_path_notifier = Notifier()
+        self.factory = SpawnFactory(self._incoming_handler,MSRPTransport,None,traffic_logger=self.traffic_logger,state_logger=self.state_logger)
+
+    def prepare(self, local_uri=None):
+        if local_uri is None:
+            local_uri = self.generate_local_uri(2855)
+        need_listen = True
+        if local_uri.port:
+            use_tls, listening_port = self.ports.get(local_uri.host, {}).get(local_uri.port, (None, None))
+            if listening_port is not None:
+                if use_tls==local_uri.use_tls:
+                    need_listen = False
+                else:
+                    listening_port.stopListening()
+                    sleep(0)
+                    self.ports.pop(local_uri.host, {}).pop(local_uri.port, None)
+        else:
+            # caller does not care about port number
+            for (use_tls, port) in self.ports[local_uri.host]:
+                if local_uri.use_tls==use_tls:
+                    local_uri.port = port.getHost().port
+                    need_listen = False
+        if need_listen:
+            port = self._listen(local_uri, self._incoming_handler, factory=self.factory)
+            self.ports.setdefault(local_uri.host, {})[local_uri.port] = (local_uri.use_tls, port)
+        self.expected_local_uris.add(local_uri)
+        return [local_uri]
+
+    def _incoming_handler(self, msrp):
+        with MSRPBindSessionTimeout.timeout():
+            chunk = msrp.read_chunk(10000)
+            ToPath = tuple(chunk.headers['To-Path'].decoded)
+            if len(ToPath)!=1:
+                msrp.write_response(chunk, 400, 'Invalid To-Path', sync=False)
+                msrp.loseConnection(sync=False)
+                return
+            ToPath = ToPath[0]
+            if ToPath in self.expected_local_uris:
+                self.expected_local_uris.discard(ToPath)
+                msrp.local_uri = ToPath
+            else:
+                msrp.write_response(chunk, 481, 'Unknown To-Path', sync=False)
+                msrp.loseConnection(sync=False)
+                return
+            FromPath = tuple(chunk.headers['From-Path'].decoded)
+            # at this point, must wait for complete() function to be called which will
+            # provide an event for this full_remote_path
+            while True:
+                event = self.expected_remote_paths.pop(FromPath, None)
+                if event is not None:
+                    break
+                self.new_full_remote_path_notifier.wait()
+        if event is not None:
+            msrp._set_full_remote_path(list(FromPath))
+            error = msrp.check_incoming_SEND_chunk(chunk)
+        else:
+            error = MSRPNoSuchSessionError
+        if error is None:
+            msrp.write_response(chunk, 200, 'OK')
+            if 'Content-Type' in chunk.headers or len(chunk.data)>0:
+                # chunk must be made available to read_chunk() again because it has payload
+                raise NotImplementedError
+            if event is not None:
+                event.send(msrp)
+        else:
+            msrp.write_response(chunk, error.code, error.comment)
+
+    def complete(self, full_remote_path):
+        full_remote_path = tuple(full_remote_path)
+        event = coros.event()
+        self.expected_remote_paths[full_remote_path] = event
+        try:
+            self.new_full_remote_path_notifier.send()
+            with MSRPBindSessionTimeout.timeout():
+                return event.wait()
+        finally:
+            self.expected_remote_paths.pop(full_remote_path, None)
+
+    def cleanup(self, local_uri, sync=True):
+        self.expected_local_uris.discard(local_uri)
+
+    def stopListening(self):
+        for interface, rest in self.ports.iteritems():
+            for port, (use_tls, listening_port) in rest:
+                listening_port.stopListening()
+        self.ports = {}
+
+    def close(self):
+        self.stopListening()
+        with timeout(self.CLOSE_TIMEOUT, None):
+            self.factory.waitall()
+
+
 
