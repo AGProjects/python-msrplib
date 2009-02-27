@@ -96,7 +96,7 @@ class MSRPTransport(GreenTransportBase):
 
     def __init__(self, local_uri, traffic_logger=None, state_logger=None):
         GreenTransportBase.__init__(self)
-        if not isinstance(local_uri, protocol.URI):
+        if local_uri is not None and not isinstance(local_uri, protocol.URI):
             raise TypeError('Not MSRP URI instance: %r' % (local_uri, ))
         # The following members define To-Path and From-Path headers as following:
         # * Outgoing request:
