@@ -121,12 +121,9 @@ class MSRPAuthTimeout(MSRPTransactionError, TimeoutMixin):
     seconds = 30
 
 class ConnectBase(object):
-    MSRPTransportClass = MSRPTransport
     SRVConnectorClass = None
 
-    def __init__(self, traffic_logger=None, state_logger=None, MSRPTransportClass=None):
-        if MSRPTransportClass is not None:
-            self.MSRPTransportClass = MSRPTransportClass
+    def __init__(self, traffic_logger=None, state_logger=None):
         self.traffic_logger = traffic_logger
         self.state_logger = state_logger
 
@@ -136,7 +133,7 @@ class ConnectBase(object):
     def _connect(self, local_uri, remote_uri):
         if self.state_logger:
             self.state_logger.report_connecting(remote_uri)
-        creator = GreenClientCreator(gtransport_class=self.MSRPTransportClass, local_uri=local_uri,
+        creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri,
                                      traffic_logger=self.traffic_logger, state_logger=self.state_logger)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
@@ -154,8 +151,21 @@ class ConnectBase(object):
             self.state_logger.report_connected(msrp)
         return msrp
 
+    def _listen(self, local_uri, handler, factory=None):
+        from twisted.internet import reactor
+        if factory is None:
+            factory = SpawnFactory(handler, MSRPTransport, local_uri, traffic_logger=self.traffic_logger, state_logger=self.state_logger)
+        listenFuncName = 'listen' + local_uri.protocol_name
+        listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
+        port = getattr(reactor, listenFuncName)(*listenFuncArgs, **{'interface': local_uri.host})
+        local_uri.port = port.getHost().port
+        if self.state_logger:
+            self.state_logger.report_listen(local_uri, port)
+        return port
+
     def cleanup(self, sync=True):
         pass
+
 
 class ConnectorDirect(ConnectBase):
 
@@ -183,19 +193,8 @@ class ConnectorDirect(ConnectBase):
             raise
         return msrp
 
-class AcceptorDirect(ConnectBase):
 
-    def _listen(self, local_uri, handler):
-        # QQQ use ip from local_uri as binding interface?
-        from twisted.internet import reactor
-        factory = SpawnFactory(handler, self.MSRPTransportClass, local_uri,
-                               traffic_logger=self.traffic_logger, state_logger=self.state_logger)
-        listenFuncName = 'listen' + local_uri.protocol_name
-        listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
-        port = getattr(reactor, listenFuncName)(*listenFuncArgs)
-        if self.state_logger:
-            self.state_logger.report_listen(local_uri, port)
-        return local_uri, port
+class AcceptorDirect(ConnectBase):
 
     def prepare(self, local_uri=None):
         """Start listening for an incoming MSRP connection using port and
@@ -206,21 +205,14 @@ class AcceptorDirect(ConnectBase):
         """
         if local_uri is None:
             local_uri = self.generate_local_uri()
-        self.transport_event = event()
-        local_uri, self.listener = self._listen(local_uri, self.transport_event.send)
-        # QQQ update local_uri.host as well?
-        local_uri.port = self.listener.getHost().port
+        self.transport_event = coros.event()
+        local_uri.host = gethostbyname(local_uri.host)
+        self.listening_port = self._listen(local_uri, self.transport_event.send)
         self.local_uri = local_uri
         return [local_uri]
 
     def getHost(self):
         return self.listener.getHost()
-
-    def _accept(self):
-        msrp = self.transport_event.wait()
-        if self.state_logger:
-            self.state_logger.report_accepted(msrp, self.local_uri)
-        return msrp
 
     def complete(self, full_remote_path):
         """Accept an incoming MSRP connection and bind it.
@@ -228,7 +220,9 @@ class AcceptorDirect(ConnectBase):
         """
         try:
             with MSRPIncomingConnectTimeout.timeout():
-                msrp = self._accept()
+                msrp = self.transport_event.wait()
+                if self.state_logger:
+                    self.state_logger.report_accepted(msrp, self.local_uri)
         finally:
             self.cleanup()
         try:
@@ -240,10 +234,11 @@ class AcceptorDirect(ConnectBase):
         return msrp
 
     def cleanup(self, sync=True):
-        if self.listener is not None:
-            self.listener.stopListening()
-            self.listener = None
-        self.transport_event = None
+        if self.listening_port is not None:
+            self.listening_port.stopListening()
+            self.listening_port = None
+            self.transport_event = None
+
 
 def _deliver_chunk(msrp, chunk):
     msrp.write(chunk.encode())
@@ -254,6 +249,7 @@ def _deliver_chunk(msrp, chunk):
     if response.transaction_id!=chunk.transaction_id:
         raise MSRPBadRequest
     return response
+
 
 class RelayConnectBase(ConnectBase):
 
