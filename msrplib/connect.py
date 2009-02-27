@@ -177,7 +177,7 @@ class ConnectorDirect(ConnectBase):
             with MSRPBindSessionTimeout.timeout():
                 msrp.bind(full_remote_path)
         except:
-            spawn_greenlet(msrp.loseConnection)
+            msrp.loseConnection(sync=False)
             raise
         return msrp
 
@@ -233,7 +233,7 @@ class AcceptorDirect(ConnectBase):
             with MSRPBindSessionTimeout.timeout():
                 msrp.accept_binding(full_remote_path)
         except:
-            spawn_greenlet(msrp.loseConnection)
+            msrp.loseConnection(sync=False)
             raise
         return msrp
 
@@ -280,7 +280,7 @@ class RelayConnectBase(ConnectBase):
             if self.state_logger:
                 self.state_logger.report_session_reserved(conn)
         except:
-            spawn_greenlet(conn.loseConnection)
+            conn.loseConnection(sync=False)
             raise
         return conn
 
@@ -310,7 +310,7 @@ class ConnectorRelay(RelayConnectBase):
                 self.msrp.bind(full_remote_path)
             return self.msrp
         except:
-            spawn_greenlet(self.msrp.loseConnection)
+            self.msrp.loseConnection(sync=False)
             raise
         finally:
             self.msrp = None
@@ -323,7 +323,7 @@ class AcceptorRelay(RelayConnectBase):
                 self.msrp.accept_binding(full_remote_path)
             return self.msrp
         except:
-            spawn_greenlet(self.msrp.loseConnection)
+            self.msrp.loseConnection(sync=False)
             raise
         finally:
             self.msrp = None
