@@ -196,9 +196,9 @@ class MSRPSession(object):
             self.state_logger.dbg('writer: exiting because of %r' % (ex, ))
         except:
             self.state_logger.dbg('writer: losing connection because of %r' % (sys.exc_info(), ))
-            self.msrp.loseConnection(sync=False)
             raise
         finally:
+            self.msrp.loseConnection(sync=False)
             self.set_state('CLOSING')
 
     def send_chunk(self, chunk, response_cb=None):
