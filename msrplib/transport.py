@@ -254,7 +254,7 @@ class MSRPTransport(GreenTransportBase):
             self.loseConnection(sync=False)
             raise MSRPNoSuchSessionError('Cannot bind session: %s' % response)
 
-    def write_response(self, chunk, code, comment):
+    def write_response(self, chunk, code, comment, sync=True):
         """Generate and write the response, lose the connection in case of error"""
         try:
             response = make_response(chunk, code, comment)
@@ -269,7 +269,7 @@ class MSRPTransport(GreenTransportBase):
             raise
         else:
             if response is not None:
-                self.write(response.encode())
+                self.write(response.encode(), sync=sync)
 
     def accept_binding(self, full_remote_path):
         self._set_full_remote_path(full_remote_path)
