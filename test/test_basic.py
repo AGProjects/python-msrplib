@@ -22,7 +22,7 @@ from eventlet import api
 from eventlet.coros import event
 from eventlet import proc
 
-from msrplib.connect import get_connector, get_acceptor, MSRPRelaySettings, ConnectBase
+from msrplib.connect import get_connector, get_acceptor, MSRPRelaySettings, ConnectBase, MSRPServer
 from msrplib import protocol as pr
 from msrplib.trafficlog import TrafficLogger, StateLogger, hook_std_output
 from msrplib.transport import MSRPTransport
@@ -65,41 +65,39 @@ class InjectedError(Exception):
     pass
 
 class TestBase(unittest.TestCase):
-    server_relay = None
+    PER_TEST_TIMEOUT = 30
+    RESPONSE_TIMEOUT = 10
     client_relay = None
     client_traffic_logger = None
     client_state_logger = StateLogger(prefix='C ')
+    server_relay = None
     server_traffic_logger = None
     server_state_logger = StateLogger(prefix='S ')
-    PER_TEST_TIMEOUT = 30
-    RESPONSE_TIMEOUT = 10
     debug = True
-    use_tls = False # XXX how does it manage to work through relay then?
+    use_tls = False
     server_credentials = None
 
-    def setup_two_endpoints(self, clientMSRPTransport=MSRPTransport, serverMSRPTransport=MSRPTransport):
+    def get_client_uri(self):
+        return pr.URI(use_tls=self.use_tls)
+
+    def get_server_uri(self):
+        return pr.URI(port=0, use_tls=self.use_tls, credentials=self.server_credentials)
+
+    def get_connector(self):
+        return get_connector(relay=self.client_relay,
+                             traffic_logger=self.client_traffic_logger,
+                             state_logger=self.client_state_logger)
+
+    def get_acceptor(self):
+        return get_acceptor(relay=self.server_relay,
+                            traffic_logger=self.server_traffic_logger,
+                            state_logger=self.server_state_logger)
+
+    def setup_two_endpoints(self):
         server_path = TimeoutEvent()
         client_path = TimeoutEvent()
-
-        client_uri = pr.URI(use_tls=self.use_tls)
-        server_uri = pr.URI(port=0, use_tls=self.use_tls, credentials=self.server_credentials)
-
-        def client():
-            msrp = get_connector(relay=self.client_relay,
-                                 traffic_logger=self.client_traffic_logger,
-                                 state_logger=self.client_state_logger,
-                                 MSRPTransportClass=clientMSRPTransport)
-            return _connect_msrp(client_path, server_path, msrp, client_uri)
-
-        def server():
-            msrp = get_acceptor(relay=self.server_relay,
-                                traffic_logger=self.server_traffic_logger,
-                                state_logger=self.server_state_logger,
-                                MSRPTransportClass=serverMSRPTransport)
-            return _connect_msrp(server_path, client_path, msrp, server_uri)
-
-        client = proc.spawn_link_exception(client)
-        server = proc.spawn_link_exception(server)
+        client = proc.spawn_link_exception(_connect_msrp, client_path, server_path, self.get_connector(), self.get_client_uri())
+        server = proc.spawn_link_exception(_connect_msrp, server_path, client_path, self.get_acceptor(), self.get_server_uri())
         return client, server
 
     def setUp(self):
@@ -122,26 +120,33 @@ class TestBase(unittest.TestCase):
             print 'Error while comparing %r and %r' % (chunk1, chunk2)
             raise
 
-
-class MSRPTransportTest(TestBase):
-
-    def _make_hello(self, msrp):
-        x = msrp.make_chunk(data='hello')
+    def _make_hello(self, msrptransport):
+        x = msrptransport.make_chunk(data='hello')
         x.add_header(pr.ContentTypeHeader('text/plain'))
-        # because MSRPTransport does not send thje responses, the relay must not either
+        # because MSRPTransport does not send the responses, the relay must not either
         x.add_header(pr.FailureReportHeader('no'))
         return x
 
-    def _send_chunk(self, sender, receiver):
+    def _test_write_chunk(self, sender, receiver):
         x = self._make_hello(sender)
         sender.write(x.encode())
         y = receiver.read_chunk()
         self.assertSameData(x, y)
 
-    def test_send_chunk(self):
+
+class TLSMixin(object):
+    use_tls = True
+    cert = X509Certificate(open('valid.crt').read())
+    key = X509PrivateKey(open('valid.key').read())
+    server_credentials = X509Credentials(cert, key)
+
+
+class MSRPTransportTest(TestBase):
+
+    def test_write_chunk(self):
         client, server = proc.waitall(self.setup_two_endpoints())
-        self._send_chunk(client, server)
-        self._send_chunk(server, client)
+        self._test_write_chunk(client, server)
+        self._test_write_chunk(server, client)
         #self.assertNoIncoming(0.1, client, server)
         client.loseConnection()
         server.loseConnection()
@@ -156,11 +161,6 @@ class MSRPTransportTest(TestBase):
 
 # add test for chunking
 
-class TLSMixin(object):
-    use_tls = True
-    cert = X509Certificate(open('valid.crt').read())
-    key = X509PrivateKey(open('valid.key').read())
-    server_credentials = X509Credentials(cert, key)
 
 class MSRPTransportTest_TLS(TLSMixin, MSRPTransportTest):
     pass
@@ -246,6 +246,51 @@ class MSRPSessionTest(TestBase):
 class MSRPSessionTest_TLS(TLSMixin, MSRPSessionTest):
     pass
 
+
+class ServerTest(TestBase):
+
+    server = None
+
+    @classmethod
+    def get_server(cls):
+        if cls.server is None:
+            cls.server = MSRPServer(traffic_logger=cls.server_traffic_logger, state_logger=cls.server_state_logger)
+        return cls.server
+
+    def get_server_uri(self):
+        return pr.URI(port=28550, use_tls=self.use_tls, credentials=self.server_credentials)
+
+    def test_2_servers_same_port(self):
+        server = self.get_server()
+        server_uri_1 = server.prepare(self.get_server_uri())
+        server_uri_2 = server.prepare(self.get_server_uri())
+        assert len(server.ports)==1, server.ports
+        assert len(server.ports.values()[0])==1, server.ports
+
+        connector = self.get_connector()
+        client1_full_local_path = connector.prepare()
+        server_transport_event = TimeoutEvent()
+        proc.spawn(server.complete, client1_full_local_path).link(server_transport_event)
+        client1_transport = connector.complete(server_uri_1)
+        server_transport = server_transport_event.wait()
+        self._test_write_chunk(client1_transport, server_transport)
+        self._test_write_chunk(server_transport, client1_transport)
+        client1_transport.loseConnection()
+        server_transport.loseConnection()
+
+        client2_full_local_path = connector.prepare()
+        server_transport_event = TimeoutEvent()
+        proc.spawn(server.complete, client2_full_local_path).link(server_transport_event)
+        client2_transport = connector.complete(server_uri_2)
+        server_transport = server_transport_event.wait()
+        self._test_write_chunk(client2_transport, server_transport)
+        self._test_write_chunk(server_transport, client2_transport)
+        client2_transport.loseConnection()
+        server_transport.loseConnection()
+
+
+class ServerTest_TLS(TLSMixin, ServerTest):
+    pass
 
 from optparse import OptionParser
 parser = OptionParser()
