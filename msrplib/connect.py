@@ -92,8 +92,10 @@ class MSRPRelaySettings(protocol.ConnectInfo):
 class TimeoutMixin(object):
 
     @classmethod
-    def timeout(cls):
-        return timeout(cls.seconds, cls)
+    def timeout(cls, *throw_args):
+        if not throw_args:
+            throw_args = (cls, )
+        return timeout(cls.seconds, *throw_args)
 
 class MSRPTimeout(MSRPError, TimeoutMixin):
     seconds = 10
