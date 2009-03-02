@@ -53,7 +53,7 @@ from eventlet.green.socket import gethostbyname
 from msrplib import protocol, MSRPError
 from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest, MSRPNoSuchSessionError
 from msrplib.digest import process_www_authenticate
-from msrplib.trafficlog import StateLogger
+from msrplib.trafficlog import Logger
 
 __all__ = ['MSRPRelaySettings',
            'MSRPTimeout',
@@ -129,20 +129,17 @@ class MSRPAuthTimeout(MSRPTransactionError, TimeoutMixin):
 class ConnectBase(object):
     SRVConnectorClass = None
 
-    def __init__(self, traffic_logger=None, state_logger=None):
-        if state_logger is None:
-            state_logger = StateLogger() # XXX remove it; remove state logger completely (but keep per-instance logging prefix)
-        self.traffic_logger = traffic_logger
-        self.state_logger = state_logger
+    def __init__(self, logger=None):
+        if logger is None:
+            logger = Logger()
+        self.logger = logger
 
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
 
     def _connect(self, local_uri, remote_uri):
-        if self.state_logger:
-            self.state_logger.report_connecting(remote_uri)
-        creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri,
-                                     traffic_logger=self.traffic_logger, state_logger=self.state_logger)
+        self.logger.info('Connecting to %s' % (remote_uri, ))
+        creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
@@ -155,20 +152,18 @@ class ConnectBase(object):
                                       connectFuncName=connectFuncName,
                                       connectFuncArgs=connectFuncArgs,
                                       ConnectorClass=self.SRVConnectorClass)
-        if self.state_logger:
-            self.state_logger.report_connected(msrp)
+        self.logger.info('Connected to %s:%s' % (msrp.getPeer().host, msrp.getPeer().port))
         return msrp
 
     def _listen(self, local_uri, handler, factory=None):
         from twisted.internet import reactor
         if factory is None:
-            factory = SpawnFactory(handler, MSRPTransport, local_uri, traffic_logger=self.traffic_logger, state_logger=self.state_logger)
+            factory = SpawnFactory(handler, MSRPTransport, local_uri, logger=self.logger)
         listenFuncName = 'listen' + local_uri.protocol_name
         listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
         port = getattr(reactor, listenFuncName)(*listenFuncArgs, **{'interface': local_uri.host})
         local_uri.port = port.getHost().port
-        if self.state_logger:
-            self.state_logger.report_listen(local_uri, port)
+        self.logger.info('Listening for incoming %s connections on %s:%s' % (local_uri.scheme.upper(), port.getHost().host, port.getHost().port))
         return port
 
     def cleanup(self, sync=True):
@@ -229,8 +224,8 @@ class AcceptorDirect(ConnectBase):
         try:
             with MSRPIncomingConnectTimeout.timeout():
                 msrp = self.transport_event.wait()
-                if self.state_logger:
-                    self.state_logger.report_accepted(msrp, self.local_uri)
+                msg = 'Incoming %s connection from %s:%s' % (self.local_uri.scheme.upper(), msrp.getPeer().host, msrp.getPeer().port)
+                self.logger.info(msg)
         finally:
             self.cleanup()
         try:
@@ -266,29 +261,29 @@ class RelayConnectBase(ConnectBase):
         ConnectBase.__init__(self, **kwargs)
 
     def _relay_connect(self, local_uri):
-        conn = self._connect(local_uri, self.relay)
+        msrp = self._connect(local_uri, self.relay)
         try:
-            local_uri.port = conn.getHost().port
+            local_uri.port = msrp.getHost().port
             msrpdata = protocol.MSRPData(method="AUTH", transaction_id='%x' % random.getrandbits(64))
             msrpdata.add_header(protocol.ToPathHeader([self.relay.uri_domain]))
             msrpdata.add_header(protocol.FromPathHeader([local_uri]))
-            response = _deliver_chunk(conn, msrpdata)
+            response = _deliver_chunk(msrp, msrpdata)
             if response.code == 401:
                 www_authenticate = response.headers["WWW-Authenticate"]
                 auth, rsp_auth = process_www_authenticate(self.relay.username, self.relay.password, "AUTH",
                                                           str(self.relay.uri_domain), **www_authenticate.decoded)
                 msrpdata.transaction_id = '%x' % random.getrandbits(64)
                 msrpdata.add_header(protocol.AuthorizationHeader(auth))
-                response = _deliver_chunk(conn, msrpdata)
+                response = _deliver_chunk(msrp, msrpdata)
             if response.code != 200:
                 raise MSRPRelayAuthError(comment=response.comment, code=response.code)
-            conn.set_local_path(list(response.headers["Use-Path"].decoded))
-            if self.state_logger:
-                self.state_logger.report_session_reserved(conn)
+            msrp.set_local_path(list(response.headers["Use-Path"].decoded))
+            msg = 'Reserved session at %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
+            self.logger.info(msg)
         except:
-            conn.loseConnection(sync=False)
+            msrp.loseConnection(sync=False)
             raise
-        return conn
+        return msrp
 
     def _relay_connect_timeout(self, local_uri):
         with MSRPRelayConnectTimeout.timeout():
@@ -363,16 +358,16 @@ class MSRPServer(ConnectBase):
 
     CLOSE_TIMEOUT = MSRPBindSessionTimeout.seconds * 2
 
-    def __init__(self, traffic_logger=None, state_logger=None):
-        ConnectBase.__init__(self, traffic_logger, state_logger)
+    def __init__(self, logger):
+        ConnectBase.__init__(self, logger)
         self.ports = {} # maps interface -> port -> (use_tls, listening Port)
         self.queue = coros.queue()
-        self.expected_local_uris = set()
+        self.expected_local_uris = {} # maps local_uri -> Logger instance
         self.expected_remote_paths = {} # maps full_remote_path -> event
         self.new_full_remote_path_notifier = Notifier()
-        self.factory = SpawnFactory(self._incoming_handler,MSRPTransport,None,traffic_logger=self.traffic_logger,state_logger=self.state_logger)
+        self.factory = SpawnFactory(self._incoming_handler,MSRPTransport,local_uri=None,logger=self.logger)
 
-    def prepare(self, local_uri=None):
+    def prepare(self, local_uri=None, logger=None):
         if local_uri is None:
             local_uri = self.generate_local_uri(2855)
         need_listen = True
@@ -394,10 +389,12 @@ class MSRPServer(ConnectBase):
         if need_listen:
             port = self._listen(local_uri, self._incoming_handler, factory=self.factory)
             self.ports.setdefault(local_uri.host, {})[local_uri.port] = (local_uri.use_tls, port)
-        self.expected_local_uris.add(local_uri)
+        self.expected_local_uris[local_uri] = logger
         return [local_uri]
 
     def _incoming_handler(self, msrp):
+        msg = 'Incoming connection from %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
+        self.logger.info(msg)
         with MSRPBindSessionTimeout.timeout():
             chunk = msrp.read_chunk(10000)
             ToPath = tuple(chunk.headers['To-Path'].decoded)
@@ -407,7 +404,9 @@ class MSRPServer(ConnectBase):
                 return
             ToPath = ToPath[0]
             if ToPath in self.expected_local_uris:
-                self.expected_local_uris.discard(ToPath)
+                logger = self.expected_local_uris.pop(ToPath)
+                if logger is not None:
+                    msrp.logger = logger
                 msrp.local_uri = ToPath
             else:
                 msrp.write_response(chunk, 481, 'Unknown To-Path', sync=False)
@@ -447,8 +446,8 @@ class MSRPServer(ConnectBase):
         finally:
             self.expected_remote_paths.pop(full_remote_path, None)
 
-    def cleanup(self, local_uri, sync=True):
-        self.expected_local_uris.discard(local_uri)
+    def cleanup(self, local_uri):
+        self.expected_local_uris.pop(local_uri, None)
 
     def stopListening(self):
         for interface, rest in self.ports.iteritems():
@@ -460,6 +459,5 @@ class MSRPServer(ConnectBase):
         self.stopListening()
         with timeout(self.CLOSE_TIMEOUT, None):
             self.factory.waitall()
-
 
 

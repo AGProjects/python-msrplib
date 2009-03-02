@@ -2,7 +2,7 @@
 
 import sys
 import datetime
-from twisted.internet.error import ConnectionDone
+from application import log
 
 
 class HeaderLogger(object):
@@ -111,66 +111,31 @@ class TrafficLogger(object):
         self.header_logger.write_data_with_header(data.replace('\r\n', '\n'), header, new_chunk)
 
     def format_params(self, transport):
-        return (self.format_address(transport.getHost()),
-                self.format_address(transport.getPeer()))
+        return (self.format_address(transport.getHost()), self.format_address(transport.getPeer()))
 
     def format_address(self, addr):
         return "%s:%s" % (addr.host, addr.port)
 
 
-class StateLogger:
+class Logger(object):
 
-    prefix = ''
-    debug = False
+    def __init__(self, prefix='', fileobj=None, is_enabled_func=None):
+        self.prefix = prefix
+        if fileobj is not None or is_enabled_func is not None:
+            self.traffic_logger = TrafficLogger.to_file(fileobj=fileobj, is_enabled_func=is_enabled_func, prefix=prefix)
+        else:
+            self.traffic_logger = None
 
-    def __init__(self, write_func=None, prefix=None, debug=None):
-        if write_func is not None:
-            self._write = write_func
-        if prefix is not None:
-            self.prefix = prefix
-        if debug is not None:
-            self.debug = debug
+    for method in ['msg', 'info', 'debug', 'warn', 'error', 'fatal']:
+        exec """def %s(self, message, **context): return log.%s(self.prefix + message, **context)""" % (method, method)
 
-    def _write(self, msg):
-        sys.stdout.write(msg + '\n')
+    def report_out(self, data, transport, new_chunk=False):
+        if self.traffic_logger:
+            return self.traffic_logger.report_out(data, transport, new_chunk)
 
-    def write(self, msg):
-        self._write(self.prefix + msg)
-
-    def dbg(self, msg):
-        if self.debug:
-            return self.write(msg)
-
-    def report_connecting(self, remote_uri):
-        msg = 'Connecting to %s' % (remote_uri, )
-        self.write(msg)
-
-    def report_connected(self, transport):
-        msg = 'Connected to %s:%s' % (transport.getPeer().host,
-                                      transport.getPeer().port)
-        self.write(msg)
-
-    def report_session_reserved(self, transport):
-        msg = 'Reserved session at %s:%s' % (transport.getPeer().host,
-                                             transport.getPeer().port)
-        self.write(msg)
-
-    def report_disconnected(self, transport, reason):
-        msg = 'Closed connection to %s:%s' % (transport.getPeer().host,
-                                              transport.getPeer().port)
-        if not isinstance(reason.value, ConnectionDone):
-            msg += ' (%s)' % reason.getErrorMessage()
-        self.write(msg)
-
-    def report_listen(self, local_uri, port):
-        msg = 'Listening for incoming %s connections on %s:%s' % (local_uri.scheme.upper(),
-                                                                  port.getHost().host, port.getHost().port)
-        self.write(msg)
-
-    def report_accepted(self, transport, local_uri):
-        msg = 'Incoming %s connection from %s:%s' % (local_uri.scheme.upper(),
-                                                     transport.getPeer().host, transport.getPeer().port)
-        self.write(msg)
+    def report_in(self, data, transport, new_chunk=False):
+        if self.traffic_logger:
+            return self.traffic_logger.report_in(data, transport, new_chunk)
 
 
 class FileWithTell(object):

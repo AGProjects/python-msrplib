@@ -16,7 +16,6 @@ from gnutls.crypto import X509PrivateKey, X509Certificate
 from gnutls.interfaces.twisted import X509Credentials
 
 from application import log
-log.level.current = log.level.DEBUG
 
 from eventlet import api
 from eventlet.coros import event
@@ -24,7 +23,7 @@ from eventlet import proc
 
 from msrplib.connect import get_connector, get_acceptor, MSRPRelaySettings, ConnectBase, MSRPServer
 from msrplib import protocol as pr
-from msrplib.trafficlog import TrafficLogger, StateLogger, hook_std_output
+from msrplib.trafficlog import TrafficLogger, Logger, hook_std_output
 from msrplib.transport import MSRPTransport
 from msrplib.session import GreenMSRPSession, MSRPSessionError, LocalResponse
 
@@ -68,11 +67,9 @@ class TestBase(unittest.TestCase):
     PER_TEST_TIMEOUT = 30
     RESPONSE_TIMEOUT = 10
     client_relay = None
-    client_traffic_logger = None
-    client_state_logger = StateLogger(prefix='C ')
+    client_logger = Logger(prefix='C ')
     server_relay = None
-    server_traffic_logger = None
-    server_state_logger = StateLogger(prefix='S ')
+    server_logger = Logger(prefix='S ')
     debug = True
     use_tls = False
     server_credentials = None
@@ -84,14 +81,10 @@ class TestBase(unittest.TestCase):
         return pr.URI(port=0, use_tls=self.use_tls, credentials=self.server_credentials)
 
     def get_connector(self):
-        return get_connector(relay=self.client_relay,
-                             traffic_logger=self.client_traffic_logger,
-                             state_logger=self.client_state_logger)
+        return get_connector(relay=self.client_relay, logger=self.client_logger)
 
     def get_acceptor(self):
-        return get_acceptor(relay=self.server_relay,
-                            traffic_logger=self.server_traffic_logger,
-                            state_logger=self.server_state_logger)
+        return get_acceptor(relay=self.server_relay, logger=self.server_logger)
 
     def setup_two_endpoints(self):
         server_path = TimeoutEvent()
@@ -254,7 +247,7 @@ class ServerTest(TestBase):
     @classmethod
     def get_server(cls):
         if cls.server is None:
-            cls.server = MSRPServer(traffic_logger=cls.server_traffic_logger, state_logger=cls.server_state_logger)
+            cls.server = MSRPServer(logger=cls.server_logger)
         return cls.server
 
     def get_server_uri(self):
@@ -304,12 +297,13 @@ parser.add_option('--log-server', action='store_true', default=False)
 parser.add_option('--debug', action='store_true', default=False)
 options, _args = parser.parse_args()
 
-StateLogger.debug = options.debug
+if options.debug:
+    log.level.current = log.level.DEBUG
 
 if options.log_client:
-    TestBase.client_traffic_logger = TrafficLogger.to_file(prefix='C ')
+    TestBase.client_logger.traffic_logger = TrafficLogger.to_file(prefix='C ')
 if options.log_server:
-    TestBase.server_traffic_logger = TrafficLogger.to_file(prefix='S ')
+    TestBase.server_logger.traffic_logger = TrafficLogger.to_file(prefix='S ')
 
 relays = []
 # SRV:

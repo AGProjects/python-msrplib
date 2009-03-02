@@ -56,7 +56,6 @@ class MSRPSession(object):
 
     def __init__(self, msrptransport, accept_types=['*'], on_incoming_cb=None):
         self.msrp = msrptransport
-        self.state_logger = self.msrp.state_logger
         self.accept_types = accept_types
         if on_incoming_cb is not None:
             self._on_incoming_cb = on_incoming_cb
@@ -75,8 +74,16 @@ class MSRPSession(object):
         if not callable(self._on_incoming_cb):
             raise TypeError('on_incoming_cb must be callable: %r' % (self._on_incoming_cb, ))
 
+    def _get_logger(self):
+        return self.msrp.logger
+
+    def _set_logger(self, logger):
+        self.msrp.logger = logger
+
+    logger = property(_get_logger, _set_logger)
+
     def set_state(self, state):
-        self.state_logger.dbg('%s (was %s)' % (state, self.state))
+        self.logger.debug('%s (was %s)' % (state, self.state))
         self.state = state
 
     @property
@@ -149,7 +156,7 @@ class MSRPSession(object):
             finally:
                 self.writer_job.unlink(self.reader_job)
                 self.writer_job.kill()
-            self.state_logger.dbg('reader: expecting responses only')
+            self.logger.debug('reader: expecting responses only')
             delay = time() - self.last_expected_response
             if delay>=0 and self.expected_responses:
                 # continue read the responses until the last timeout expires
@@ -159,7 +166,7 @@ class MSRPSession(object):
                         if chunk.method is None:
                             self._handle_incoming_response(chunk)
                         else:
-                            self.state_logger.dbg('dropping incoming %r' % chunk)
+                            self.logger.debug('dropping incoming %r' % chunk)
                 # read whatever left in the queue
                 with api.timeout(0, None):
                     while self.msrp._queue:
@@ -167,13 +174,13 @@ class MSRPSession(object):
                         if chunk.method is None:
                             self._handle_incoming_response(chunk)
                         else:
-                            self.state_logger.dbg('dropping incoming %r' % chunk)
-            self.state_logger.dbg('reader: done')
+                            self.logger.debug('dropping incoming %r' % chunk)
+            self.logger.debug('reader: done')
         except ConnectionClosedErrors, ex:
-            self.state_logger.dbg('reader: exiting because of %r' % ex)
+            self.logger.debug('reader: exiting because of %r' % ex)
             error=Failure(ex)
         except:
-            self.state_logger.dbg('reader: losing connection because of %r' % (sys.exc_info(), ))
+            self.logger.debug('reader: losing connection because of %r' % (sys.exc_info(), ))
             error=Failure()
             raise
         finally:
@@ -193,9 +200,9 @@ class MSRPSession(object):
                 if send_params is not None:
                     self._write_chunk(*send_params)
         except ConnectionClosedErrors + (proc.LinkedExited, proc.ProcExit), ex:
-            self.state_logger.dbg('writer: exiting because of %r' % (ex, ))
+            self.logger.debug('writer: exiting because of %r' % (ex, ))
         except:
-            self.state_logger.dbg('writer: losing connection because of %r' % (sys.exc_info(), ))
+            self.logger.debug('writer: losing connection because of %r' % (sys.exc_info(), ))
             raise
         finally:
             self.msrp.loseConnection(sync=False)

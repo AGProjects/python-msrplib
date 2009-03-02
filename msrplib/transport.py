@@ -3,9 +3,11 @@
 import random
 from copy import copy
 from application import log
+from twisted.internet.error import ConnectionDone
 from eventlet.twistedutil.protocol import GreenTransportBase
 
 from msrplib import protocol, MSRPError
+from msrplib.trafficlog import Logger
 
 
 class ChunkParseError(MSRPError):
@@ -42,24 +44,22 @@ data_start, data_end, data_write, data_final_write = xrange(4)
 
 class MSRPProtocol_withLogging(protocol.MSRPProtocol):
 
-    traffic_logger = None
-    state_logger = None
     _new_chunk = False
 
     def rawDataReceived(self, data):
-        if self.traffic_logger:
-            self.traffic_logger.report_in(data, self.transport)
+        self.transport.logger.report_in(data, self.transport)
         protocol.MSRPProtocol.rawDataReceived(self, data)
 
     def lineReceived(self, line):
-        if self.traffic_logger:
-            self.traffic_logger.report_in(line+self.delimiter, self.transport, self._new_chunk)
+        self.transport.logger.report_in(line+self.delimiter, self.transport, self._new_chunk)
         self._new_chunk = False
         protocol.MSRPProtocol.lineReceived(self, line)
 
     def connectionLost(self, reason):
-        if self.state_logger:
-            self.state_logger.report_disconnected(self.transport, reason)
+        msg = 'Closed connection to %s:%s' % (self.transport.getPeer().host, self.transport.getPeer().port)
+        if not isinstance(reason.value, ConnectionDone):
+            msg += ' (%s)' % reason.getErrorMessage()
+        self.transport.logger.info(msg)
         protocol.MSRPProtocol.connectionLost(self, reason)
 
     def setLineMode(self, extra):
@@ -94,7 +94,7 @@ def make_response(chunk, code, comment):
 class MSRPTransport(GreenTransportBase):
     protocol_class = MSRPProtocol_withLogging
 
-    def __init__(self, local_uri, traffic_logger=None, state_logger=None):
+    def __init__(self, local_uri, logger):
         GreenTransportBase.__init__(self)
         if local_uri is not None and not isinstance(local_uri, protocol.URI):
             raise TypeError('Not MSRP URI instance: %r' % (local_uri, ))
@@ -106,12 +106,26 @@ class MSRPTransport(GreenTransportBase):
         #   From-Path: remote_path + remote_uri
         #   To-Path: remote_path + local_path + [local_uri] # XXX
         self.local_uri = local_uri
+        if logger is None:
+            logger = Logger()
+        self._logger = logger
         self.local_path = []
         self.remote_uri = None
         self.remote_path = []
-        self.traffic_logger = traffic_logger
-        self.state_logger = state_logger
         self._msrpdata = None
+
+    def _get_logger(self):
+        return self.transport.logger
+
+    def _set_logger(self, logger):
+        self.transport.logger = logger
+
+    logger = property(_get_logger, _set_logger)
+
+    def _init_transport(self):
+        GreenTransportBase._init_transport(self)
+        self.transport.logger = self._logger
+        del self._logger
 
     def next_host(self):
         if self.local_path:
@@ -157,12 +171,6 @@ class MSRPTransport(GreenTransportBase):
         chunk.contflag = contflag
         return chunk
 
-    def build_protocol(self):
-        p = GreenTransportBase.build_protocol(self)
-        p.traffic_logger = self.traffic_logger
-        p.state_logger = self.state_logger
-        return p
-
     def _data_start(self, data):
         self._queue.send((data_start, data))
 
@@ -176,8 +184,7 @@ class MSRPTransport(GreenTransportBase):
             self._queue.send((data_final_write, contents))
 
     def write(self, data, sync=True):
-        if self.traffic_logger:
-            self.traffic_logger.report_out(data, self.transport)
+        self.logger.report_out(data, self.transport)
         return GreenTransportBase.write(self, data, sync)
 
     def read_chunk(self, size=None):
@@ -202,7 +209,7 @@ class MSRPTransport(GreenTransportBase):
         if self._msrpdata is None:
             func, msrpdata = self._wait()
             if func!=data_start:
-                self.state_logger.write('Bad data: %r %r' % (func, msrpdata))
+                self.logger.debug('Bad data: %r %r' % (func, msrpdata))
                 self.loseConnection()
                 raise ChunkParseError
         else:
@@ -225,17 +232,17 @@ class MSRPTransport(GreenTransportBase):
             data += param
             func, param = self._wait()
         if func != data_end:
-            self.state_logger.write('Bad data: %r %r' % (func, param))
+            self.logger.debug('Bad data: %r %r' % (func, param))
             self.loseConnection()
             raise ChunkParseError
         if param not in "$+#":
-            self.state_logger.write('Bad data: %r %r' % (func, param))
+            self.logger.debug('Bad data: %r %r' % (func, param))
             self.loseConnection()
             raise ChunkParseError
         msrpdata.data = data
         msrpdata.contflag = param
         self._msrpdata = None
-        self.state_logger.dbg('read_chunk -> %r' % (msrpdata, ))
+        self.logger.debug('read_chunk -> %r' % (msrpdata, ))
         return msrpdata
 
     def _set_full_remote_path(self, full_remote_path):
