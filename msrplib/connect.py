@@ -378,7 +378,7 @@ class MSRPServer(ConnectBase):
                     need_listen = False
                 else:
                     listening_port.stopListening()
-                    sleep(0)
+                    sleep(0) # make reactor to really stop listening, so that the next listen() call won't fail
                     self.ports.pop(local_uri.host, {}).pop(local_uri.port, None)
         else:
             # caller does not care about port number
