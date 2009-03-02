@@ -5,7 +5,7 @@ import datetime
 from twisted.internet.error import ConnectionDone
 
 
-class HeaderLogger:
+class HeaderLogger(object):
     """
     >>> l = HeaderLogger()
 
@@ -81,7 +81,7 @@ class HeaderLogger_File(HeaderLogger):
             HeaderLogger.__init__(self, fileobj.write, fileobj.tell, is_enabled_func, prefix=prefix)
 
 
-class TrafficLogger:
+class TrafficLogger(object):
 
     def __init__(self, header_logger):
         self.header_logger = header_logger
