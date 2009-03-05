@@ -215,7 +215,7 @@ class AcceptorDirect(ConnectBase):
         return [local_uri]
 
     def getHost(self):
-        return self.listener.getHost()
+        return self.listening_port.getHost()
 
     def complete(self, full_remote_path):
         """Accept an incoming MSRP connection and bind it.
