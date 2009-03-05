@@ -154,8 +154,12 @@ class MSRPTransport(GreenTransportBase):
         else:
             chunk.add_header(protocol.MessageIDHeader(message_id))
         # Byte-Range and Message-ID are neccessary because otherwise msrprelay does not work
-        chunk.data = data
-        chunk.contflag = contflag
+        if method=='SEND':
+            chunk.data = data
+            chunk.contflag = contflag
+        else:
+            chunk.data = ''
+            chunk.contflag = '$'
         return chunk
 
     def _data_start(self, data):
