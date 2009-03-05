@@ -65,7 +65,6 @@ class InjectedError(Exception):
 
 class TestBase(unittest.TestCase):
     PER_TEST_TIMEOUT = 30
-    RESPONSE_TIMEOUT = 10
     client_relay = None
     client_logger = Logger(prefix='C ')
     server_relay = None
@@ -113,18 +112,21 @@ class TestBase(unittest.TestCase):
             print 'Error while comparing %r and %r' % (chunk1, chunk2)
             raise
 
-    def _make_hello(self, msrptransport):
-        x = msrptransport.make_chunk(data='hello')
-        x.add_header(pr.ContentTypeHeader('text/plain'))
+    def make_hello(self, msrptransport, success_report=None, failure_report=None):
+        chunk = msrptransport.make_chunk(data='hello')
+        chunk.add_header(pr.ContentTypeHeader('text/plain'))
         # because MSRPTransport does not send the responses, the relay must not either
-        x.add_header(pr.FailureReportHeader('no'))
-        return x
+        if success_report is not None:
+            chunk.add_header(pr.SuccessReportHeader(success_report))
+        if failure_report is not None:
+            chunk.add_header(pr.FailureReportHeader(failure_report))
+        return chunk
 
     def _test_write_chunk(self, sender, receiver):
-        x = self._make_hello(sender)
-        sender.write(x.encode())
-        y = receiver.read_chunk()
-        self.assertSameData(x, y)
+        chunk = self.make_hello(sender, failure_report='no')
+        sender.write(chunk.encode())
+        chunk_received = receiver.read_chunk()
+        self.assertSameData(chunk, chunk_received)
 
 
 class TLSMixin(object):
@@ -148,9 +150,9 @@ class MSRPTransportTest(TestBase):
         client, server = proc.waitall(self.setup_two_endpoints())
         client.loseConnection()
         self.assertRaises(ConnectionDone, server.read_chunk)
-        self.assertRaises(ConnectionDone, server.write, self._make_hello(server).encode())
+        self.assertRaises(ConnectionDone, server.write, self.make_hello(server).encode())
         self.assertRaises(ConnectionDone, client.read_chunk)
-        self.assertRaises(ConnectionDone, client.write, self._make_hello(client).encode())
+        self.assertRaises(ConnectionDone, client.write, self.make_hello(client).encode())
 
 # add test for chunking
 
@@ -160,21 +162,13 @@ class MSRPTransportTest_TLS(TLSMixin, MSRPTransportTest):
 
 class MSRPSessionTest(TestBase):
 
-    def deliver_chunk(self, msrp, chunk):
-        with api.timeout(self.RESPONSE_TIMEOUT, api.TimeoutError('Did not received transaction response')):
-            return msrp.deliver_chunk(chunk)
-
-    def _make_hello(self, session):
-        x = session.msrp.make_chunk(data='hello')
-        x.add_header(pr.ContentTypeHeader('text/plain'))
-        return x
-
-    def _test_deliver_chunk(self, sender, receiver):
-        x = self._make_hello(sender)
-        response = self.deliver_chunk(sender, x)
+    def _test_deliver_chunk(self, sender, receiver, chunk=None):
+        if chunk is None:
+            chunk = self.make_hello(sender.msrp)
+        response = sender.deliver_chunk(chunk)
         assert response.code == 200, response
-        y = receiver.receive_chunk()
-        self.assertSameData(x, y)
+        chunk_received = receiver.receive_chunk()
+        self.assertSameData(chunk, chunk_received)
 
     def test_deliver_chunk(self):
         client, server = proc.waitall(self.setup_two_endpoints())
@@ -196,8 +190,8 @@ class MSRPSessionTest(TestBase):
     def test_send_chunk_response_localtimeout(self):
         client, server = proc.waitall(self.setup_two_endpoints())
         client, server = GreenMSRPSession_ZeroTimeout(client), GreenMSRPSession(server)
-        x = self._make_hello(client)
-        self.assertRaisesCode(LocalResponse, 408, self.deliver_chunk, client, x)
+        x = self.make_hello(client.msrp)
+        self.assertRaisesCode(LocalResponse, 408, client.deliver_chunk, x)
         y = server.receive_chunk()
         self.assertSameData(x, y)
         #self.assertNoIncoming(0.1, client, server)
@@ -210,9 +204,9 @@ class MSRPSessionTest(TestBase):
         client, server = GreenMSRPSession(client), GreenMSRPSession(server)
         client.shutdown()
         self.assertRaises(ConnectionDone, server.receive_chunk)
-        self.assertRaises(MSRPSessionError, server.send_chunk, self._make_hello(server))
+        self.assertRaises(MSRPSessionError, server.send_chunk, self.make_hello(server.msrp))
         self.assertRaises(ConnectionDone, client.receive_chunk)
-        self.assertRaises(MSRPSessionError, client.send_chunk, self._make_hello(client))
+        self.assertRaises(MSRPSessionError, client.send_chunk, self.make_hello(client.msrp))
 
     def test_reader_failed__receive(self):
         # if reader fails with an exception, receive_chunk raises that exception
@@ -221,19 +215,19 @@ class MSRPSessionTest(TestBase):
         client, server = GreenMSRPSession(client), GreenMSRPSession(server)
         client.reader_job.kill(InjectedError("Killing client's reader_job"))
         self.assertRaises(InjectedError, client.receive_chunk)
-        self.assertRaises(MSRPSessionError, client.send_chunk, self._make_hello(client))
+        self.assertRaises(MSRPSessionError, client.send_chunk, self.make_hello(client.msrp))
         self.assertRaises(ConnectionClosed, server.receive_chunk)
-        self.assertRaises(MSRPSessionError, server.send_chunk, self._make_hello(server))
+        self.assertRaises(MSRPSessionError, server.send_chunk, self.make_hello(server.msrp))
 
     def test_reader_failed__send(self):
         client, server = proc.waitall(self.setup_two_endpoints())
         client, server = GreenMSRPSession(client), GreenMSRPSession(server)
         client.reader_job.kill(InjectedError("Killing client's reader_job"))
         api.sleep(0.1)
-        self.assertRaises(MSRPSessionError, client.send_chunk, self._make_hello(client))
+        self.assertRaises(MSRPSessionError, client.send_chunk, self.make_hello(client.msrp))
         self.assertRaises(InjectedError, client.receive_chunk)
         api.sleep(0.1)
-        self.assertRaises(MSRPSessionError, server.send_chunk, self._make_hello(server))
+        self.assertRaises(MSRPSessionError, server.send_chunk, self.make_hello(server.msrp))
         self.assertRaises(ConnectionClosed, server.receive_chunk)
 
 class MSRPSessionTest_TLS(TLSMixin, MSRPSessionTest):
