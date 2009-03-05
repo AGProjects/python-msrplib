@@ -187,6 +187,18 @@ class MSRPSessionTest(TestBase):
         else:
             raise AssertionError('%r didnt raise %s' % (func, exception))
 
+    def test_deliver_chunk_success_report(self):
+        client, server = proc.waitall(self.setup_two_endpoints())
+        client, server = GreenMSRPSession(client), GreenMSRPSession(server)
+        chunk = self.make_hello(client.msrp, success_report='yes')
+        self._test_deliver_chunk(client, server, chunk)
+        report = client.receive_chunk()
+        self.assertEqual(report.method, 'REPORT')
+        self.assertEqual(report.message_id, chunk.message_id)
+        self.assertEqual(report.byte_range, chunk.byte_range)
+        client.shutdown()
+        server.shutdown()
+
     def test_send_chunk_response_localtimeout(self):
         client, server = proc.waitall(self.setup_two_endpoints())
         client, server = GreenMSRPSession_ZeroTimeout(client), GreenMSRPSession(server)
