@@ -11,6 +11,7 @@ from eventlet.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import make_response, MSRPTransactionError
+from msrplib.protocol import StatusHeader
 
 ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
 
@@ -129,6 +130,13 @@ class MSRPSession(object):
                 self.outgoing.send((response, None))
         if code==200:
             self._on_incoming_cb(chunk)
+        if chunk.final and chunk.success_report=='yes':
+            report = self.msrp.make_chunk(method='REPORT', message_id=chunk.message_id)
+            report.add_header(StatusHeader('000 200 OK'))
+            byterange = chunk.headers.get('Byte-Range')
+            if byterange is not None:
+                report.add_header(byterange)
+            self.outgoing.send((report, None))
 
     def _reader(self):
         """Wait forever for new chunks. Notify the user about the good ones through self._on_incoming_cb.
