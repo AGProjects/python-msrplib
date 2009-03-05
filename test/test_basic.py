@@ -94,7 +94,7 @@ class TestBase(unittest.TestCase):
         return client, server
 
     def setUp(self):
-        print '\n' + self.__class__.__name__
+        print '\n%s.%s' % (self.__class__.__name__, self._testMethodName)
         self.timer = api.exc_after(self.PER_TEST_TIMEOUT, api.TimeoutError('per test timeout expired'))
 
     def tearDown(self):
