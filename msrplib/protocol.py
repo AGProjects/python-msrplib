@@ -376,10 +376,7 @@ class MSRPData(object):
 
     @property
     def status(self):
-        x = self.headers.get('Status')
-        if x is None:
-            return x
-        return x.decoded
+        return self.headers.get('Status')
 
     @property
     def failure_report(self):
