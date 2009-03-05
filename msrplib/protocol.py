@@ -179,7 +179,7 @@ class ByteRangeHeader(MSRPNamedHeader):
             if total != "*":
                 self._raise_error()
             total = None
-        return [fro, to, total]
+        return (fro, to, total)
 
     def _encode(self, decoded):
         fro, to, total = decoded
