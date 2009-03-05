@@ -47,11 +47,11 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
     _new_chunk = False
 
     def rawDataReceived(self, data):
-        self.transport.logger.report_in(data, self.transport)
+        self._recepient.logger.report_in(data, self.transport)
         protocol.MSRPProtocol.rawDataReceived(self, data)
 
     def lineReceived(self, line):
-        self.transport.logger.report_in(line+self.delimiter, self.transport, self._new_chunk)
+        self._recepient.logger.report_in(line+self.delimiter, self.transport, self._new_chunk)
         self._new_chunk = False
         protocol.MSRPProtocol.lineReceived(self, line)
 
@@ -59,7 +59,7 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
         msg = 'Closed connection to %s:%s' % (self.transport.getPeer().host, self.transport.getPeer().port)
         if not isinstance(reason.value, ConnectionDone):
             msg += ' (%s)' % reason.getErrorMessage()
-        self.transport.logger.info(msg)
+        self._recepient.logger.info(msg)
         protocol.MSRPProtocol.connectionLost(self, reason)
 
     def setLineMode(self, extra):
@@ -108,24 +108,11 @@ class MSRPTransport(GreenTransportBase):
         self.local_uri = local_uri
         if logger is None:
             logger = Logger()
-        self._logger = logger
+        self.logger = logger
         self.local_path = []
         self.remote_uri = None
         self.remote_path = []
         self._msrpdata = None
-
-    def _get_logger(self):
-        return self.transport.logger
-
-    def _set_logger(self, logger):
-        self.transport.logger = logger
-
-    logger = property(_get_logger, _set_logger)
-
-    def _init_transport(self):
-        GreenTransportBase._init_transport(self)
-        self.transport.logger = self._logger
-        del self._logger
 
     def next_host(self):
         if self.local_path:
