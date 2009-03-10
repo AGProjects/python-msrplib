@@ -170,9 +170,9 @@ class MSRPTransport(GreenTransportBase):
 
     def _data_write(self, contents, final):
         if final:
-            self._queue.send((data_write, contents))
-        else:
             self._queue.send((data_final_write, contents))
+        else:
+            self._queue.send((data_write, contents))
 
     def write(self, data, sync=True):
         self.logger.report_out(data, self.transport)
