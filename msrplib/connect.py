@@ -174,6 +174,9 @@ class ConnectorDirect(ConnectBase):
 
     BOGUS_LOCAL_PORT = 12345
 
+    def __repr__(self):
+        return '<%s at %s local_uri=%s>' % (type(self).__name__, hex(id(self)), getattr(self, 'local_uri', '(none)'))
+
     def prepare(self, local_uri=None):
         if local_uri is None:
             local_uri = self.generate_local_uri(self.BOGUS_LOCAL_PORT)
@@ -198,6 +201,15 @@ class ConnectorDirect(ConnectBase):
 
 
 class AcceptorDirect(ConnectBase):
+
+    def __init__(self, *args, **kwargs):
+        ConnectBase.__init__(self, *args, **kwargs)
+        self.listening_port = None
+        self.transport_event = None
+        self.local_uri = None
+
+    def __repr__(self):
+        return '<%s at %s local_uri=%s listening_port=%s>' % (type(self).__name__, hex(id(self)), self.local_uri, self.listening_port)
 
     def prepare(self, local_uri=None):
         """Start listening for an incoming MSRP connection using port and
@@ -240,7 +252,8 @@ class AcceptorDirect(ConnectBase):
         if self.listening_port is not None:
             self.listening_port.stopListening()
             self.listening_port = None
-            self.transport_event = None
+        self.transport_event = None
+        self.local_uri = None
 
 
 def _deliver_chunk(msrp, chunk):
@@ -257,8 +270,12 @@ def _deliver_chunk(msrp, chunk):
 class RelayConnectBase(ConnectBase):
 
     def __init__(self, relay, **kwargs):
-        self.relay = relay
         ConnectBase.__init__(self, **kwargs)
+        self.relay = relay
+        self.msrp = None
+
+    def __repr__(self):
+        return '<%s at %s relay=%r msrp=%s>' % (type(self).__name__, hex(id(self)), self.relay, self.msrp)
 
     def _relay_connect(self, local_uri):
         msrp = self._connect(local_uri, self.relay)
