@@ -103,7 +103,7 @@ class TimeoutMixin(object):
         return timeout(cls.seconds, *throw_args)
 
 class MSRPTimeout(MSRPError, TimeoutMixin):
-    seconds = 10
+    seconds = 30
 
 class MSRPConnectTimeout(MSRPTimeout):
     pass
