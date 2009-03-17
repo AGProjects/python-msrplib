@@ -223,11 +223,11 @@ class MSRPTransport(GreenTransportBase):
             data += param
             func, param = self._wait()
         if func != data_end:
-            self.logger.debug('Bad data: %r %r' % (func, param))
+            self.logger.debug('Bad data: %r %s' % (func, repr(param)[:100]))
             self.loseConnection()
             raise ChunkParseError
         if param not in "$+#":
-            self.logger.debug('Bad data: %r %r' % (func, param))
+            self.logger.debug('Bad data: %r %s' % (func, repr(param)[:100]))
             self.loseConnection()
             raise ChunkParseError
         msrpdata.data = data
