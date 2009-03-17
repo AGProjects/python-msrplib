@@ -1,3 +1,9 @@
+python-msrplib (1.0.0) unstable; urgency=low
+
+  * 
+
+ -- Adrian Georgescu <ag@ag-projects.com>  Tue, 17 Mar 2009 20:33:13 +0100
+
 python-msrplib (0.9.2) unstable; urgency=low
 
   * splitted MSRPTransport into 2 classes: MSRPSession (session.py) and
