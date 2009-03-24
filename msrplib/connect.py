@@ -181,6 +181,8 @@ class ConnectorDirect(ConnectBase):
         if local_uri is None:
             local_uri = self.generate_local_uri(self.BOGUS_LOCAL_PORT)
         self.local_uri = local_uri
+        if not self.local_uri.port:
+            self.local_uri.port = 2855
         return [self.local_uri]
 
     def getHost(self):
