@@ -92,6 +92,7 @@ class MSRPSession(object):
         return self.state=='CONNECTED'
 
     def shutdown(self, sync=True):
+        """Send the messages already in queue then close the connection"""
         self.set_state('FLUSHING')
         self.outgoing.send(None)
         if sync:
@@ -220,8 +221,8 @@ class MSRPSession(object):
         """Send `chunk'. Report the result via `response_cb'.
 
         When `response_cb' argument is present, it will be used to report
-        the response to the caller. When a response is received or generated
-        locally, `response_cb' is called with one argument. The function
+        the transaction response to the caller. When a response is received
+        or generated locally, `response_cb' is called with one argument. The function
         must do something quickly and must not block, because otherwise it would
         the reader greenlet.
 
@@ -273,11 +274,10 @@ class MSRPSession(object):
                 timer.cancel()
 
     def deliver_chunk(self, chunk, event=None):
-        """Send chunk, block until transaction response is received
-        (if Failure-Report header is not 'no'). Return the transaction response
-        if it's a success, raise MSRPTransactionError if it's not.
+        """Send chunk, wait for the transaction response (if Failure-Report header is not 'no').
+        Return the transaction response if it's a success, raise MSRPTransactionError if it's not.
 
-        If chunk's Failure-Report is 'no', return None immediatelly.
+        If chunk's Failure-Report is 'no', return None immediately.
         """
         if chunk.failure_report!='no' and event is None:
             event = coros.event()

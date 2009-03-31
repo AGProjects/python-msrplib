@@ -373,7 +373,17 @@ class Notifier(coros.event):
 
 
 class MSRPServer(ConnectBase):
-    """Manage listening sockets. Bind incoming requests."""
+    """Manage listening sockets. Bind incoming requests.
+
+    MSRPServer solves the problem with AcceptorDirect: concurrent using of 2
+    or more AcceptorDirect instances on the same non-zero port is not possible.
+    If you initialize() those instances, one after another, one will listen on
+    the socket and another will get BindError.
+
+    MSRPServer avoids the problem by sharing the listening socket between multiple connections.
+    It has slightly different interface from AcceptorDirect, so it cannot be considered a drop-in
+    replacement.
+    """
 
     CLOSE_TIMEOUT = MSRPBindSessionTimeout.seconds * 2
 
@@ -387,6 +397,10 @@ class MSRPServer(ConnectBase):
         self.factory = SpawnFactory(self._incoming_handler,MSRPTransport,local_uri=None,logger=self.logger)
 
     def prepare(self, local_uri=None, logger=None):
+        """Start a listening port specified by local_uri if there isn't one on that port/interface already.
+        Add `local_uri' to the list of expected URIs, so that incoming connections featuring this URI won't be rejected.
+        If `logger' is provided use it for this connection instead of the default one.
+        """
         if local_uri is None:
             local_uri = self.generate_local_uri(2855)
         need_listen = True
@@ -397,7 +411,7 @@ class MSRPServer(ConnectBase):
                     need_listen = False
                 else:
                     listening_port.stopListening()
-                    sleep(0) # make reactor to really stop listening, so that the next listen() call won't fail
+                    sleep(0) # make the reactor really stop listening, so that the next listen() call won't fail
                     self.ports.pop(local_uri.host, {}).pop(local_uri.port, None)
         else:
             # caller does not care about port number
@@ -455,6 +469,11 @@ class MSRPServer(ConnectBase):
             msrp.write_response(chunk, error.code, error.comment)
 
     def complete(self, full_remote_path):
+        """Wait until one of the incoming connections binds using provided full_remote_path.
+        Return connected and bound MSRPTransport instance.
+
+        If no such binding was made within MSRPBindSessionTimeout.seconds, raise MSRPBindSessionTimeout.
+        """
         full_remote_path = tuple(full_remote_path)
         event = coros.event()
         self.expected_remote_paths[full_remote_path] = event
@@ -466,15 +485,18 @@ class MSRPServer(ConnectBase):
             self.expected_remote_paths.pop(full_remote_path, None)
 
     def cleanup(self, local_uri):
+        """Remove `local_uri' from the list of expected URIs"""
         self.expected_local_uris.pop(local_uri, None)
 
     def stopListening(self):
+        """Close all the sockets that MSRPServer is listening on"""
         for interface, rest in self.ports.iteritems():
             for port, (use_tls, listening_port) in rest:
                 listening_port.stopListening()
         self.ports = {}
 
     def close(self):
+        """Stop listening. Wait for the spawned greenlets to finish"""
         self.stopListening()
         with timeout(self.CLOSE_TIMEOUT, None):
             self.factory.waitall()

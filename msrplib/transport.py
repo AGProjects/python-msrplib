@@ -133,7 +133,9 @@ class MSRPTransport(GreenTransportBase):
 
     def make_chunk(self, transaction_id=None, method='SEND', code=None, comment=None, data='',
                    contflag=None, start=1, end=None, length=None, message_id=None):
-        """Make a new MSRPData object with From and To headers set up"""
+        """Make a new MSRPData object with proper From-Path and To-Path headers set up.
+        In addition add Byte-Range and Message-ID headers.
+        """
         if transaction_id is None:
             transaction_id = '%x' % random.getrandbits(64)
         chunk = protocol.MSRPData(transaction_id=transaction_id, method=method, code=code, comment=comment)
@@ -174,22 +176,23 @@ class MSRPTransport(GreenTransportBase):
         else:
             self._queue.send((data_write, contents))
 
-    def write(self, data, sync=True):
-        self.logger.report_out(data, self.transport)
-        return GreenTransportBase.write(self, data, sync)
+    def write(self, bytes, sync=True):
+        """Write `bytes' to the socket. If `sync' is true, wait for an operation to complete"""
+        self.logger.report_out(bytes, self.transport)
+        return GreenTransportBase.write(self, bytes, sync)
 
     def read_chunk(self, size=None):
         """Wait for a new chunk and return it.
-        If there was an error, lose Connection and raise ChunkParseError
+        If there was an error, close the connection and raise ChunkParseError.
 
         In case of unintelligible input, lose the connection and return None.
-        When connection is closed, raise the reason of the closure (e.g. ConnectionDone).
+        When the connection is closed, raise the reason of the closure (e.g. ConnectionDone).
 
         If the data already read exceeds `size', stop reading the data and return
         a "virtual" chunk, i.e. the one that does not actually correspond the the real
-        MSRP chunk. Such chunks have Byte-Range header fixed and continuation that is '+';
-        they also posses 'segment' attribute, an integer, starting with 1 and increasing
-        with every new segment of the chunk.
+        MSRP chunk. Such chunks have Byte-Range header changed to match the number of
+        bytes read and continuation that is '+'; they also possess 'segment' attribute,
+        an integer, starting with 1 and increasing with every new segment of the chunk.
 
         Note, that `size' only hints when to interrupt the segment but does not affect
         how the data is read from socket. You may have segments bigger than `size' and it's
@@ -283,6 +286,10 @@ class MSRPTransport(GreenTransportBase):
             raise NotImplementedError
 
     def check_incoming_SEND_chunk(self, chunk):
+        """Check the 'To-Path' and 'From-Path' of the incoming SEND chunk.
+        Return None is the paths are valid for this connection.
+        If an error is detected and MSRPError is created and returned.
+        """
         assert chunk.method=='SEND', repr(chunk)
         try:
             ToPath = chunk.headers['To-Path']
