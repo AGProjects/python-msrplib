@@ -91,11 +91,11 @@ class MSRPSession(object):
     def connected(self):
         return self.state=='CONNECTED'
 
-    def shutdown(self, sync=True):
+    def shutdown(self, wait=True):
         """Send the messages already in queue then close the connection"""
         self.set_state('FLUSHING')
         self.outgoing.send(None)
-        if sync:
+        if wait:
             self.writer_job.wait(None, None)
             self.reader_job.wait(None, None)
 
@@ -194,7 +194,7 @@ class MSRPSession(object):
             raise
         finally:
             self._on_incoming_cb(error=error)
-            self.msrp.loseConnection(sync=False)
+            self.msrp.loseConnection(wait=False)
             self.set_state('DONE')
 
     def _writer(self):
@@ -214,7 +214,7 @@ class MSRPSession(object):
             self.logger.debug('writer: losing connection because of %r' % (sys.exc_info(), ))
             raise
         finally:
-            self.msrp.loseConnection(sync=False)
+            self.msrp.loseConnection(wait=False)
             self.set_state('CLOSING')
 
     def send_chunk(self, chunk, response_cb=None):

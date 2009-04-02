@@ -176,10 +176,10 @@ class MSRPTransport(GreenTransportBase):
         else:
             self._queue.send((data_write, contents))
 
-    def write(self, bytes, sync=True):
-        """Write `bytes' to the socket. If `sync' is true, wait for an operation to complete"""
+    def write(self, bytes, wait=True):
+        """Write `bytes' to the socket. If `wait' is true, wait for an operation to complete"""
         self.logger.report_out(bytes, self.transport)
-        return GreenTransportBase.write(self, bytes, sync)
+        return GreenTransportBase.write(self, bytes, wait)
 
     def read_chunk(self, size=None):
         """Wait for a new chunk and return it.
@@ -252,25 +252,25 @@ class MSRPTransport(GreenTransportBase):
         self.write(chunk.encode())
         response = self.read_chunk()
         if response.code != 200:
-            self.loseConnection(sync=False)
+            self.loseConnection(wait=False)
             raise MSRPNoSuchSessionError('Cannot bind session: %s' % response)
 
-    def write_response(self, chunk, code, comment, sync=True):
+    def write_response(self, chunk, code, comment, wait=True):
         """Generate and write the response, lose the connection in case of error"""
         try:
             response = make_response(chunk, code, comment)
         except ChunkParseError, ex:
             log.error('Failed to generate a response: %s' % ex)
-            self.loseConnection(sync=False)
+            self.loseConnection(wait=False)
             raise
         except Exception:
             log.error('Failed to generate a response')
             log.err()
-            self.loseConnection(sync=False)
+            self.loseConnection(wait=False)
             raise
         else:
             if response is not None:
-                self.write(response.encode(), sync=sync)
+                self.write(response.encode(), wait=wait)
 
     def accept_binding(self, full_remote_path):
         self._set_full_remote_path(full_remote_path)

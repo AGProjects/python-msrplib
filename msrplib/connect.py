@@ -166,7 +166,7 @@ class ConnectBase(object):
         self.logger.info('Listening for incoming %s connections on %s:%s' % (local_uri.scheme.upper(), port.getHost().host, port.getHost().port))
         return port
 
-    def cleanup(self, sync=True):
+    def cleanup(self, wait=True):
         pass
 
 
@@ -197,7 +197,7 @@ class ConnectorDirect(ConnectBase):
             with MSRPBindSessionTimeout.timeout():
                 msrp.bind(full_remote_path)
         except:
-            msrp.loseConnection(sync=False)
+            msrp.loseConnection(wait=False)
             raise
         return msrp
 
@@ -246,11 +246,11 @@ class AcceptorDirect(ConnectBase):
             with MSRPBindSessionTimeout.timeout():
                 msrp.accept_binding(full_remote_path)
         except:
-            msrp.loseConnection(sync=False)
+            msrp.loseConnection(wait=False)
             raise
         return msrp
 
-    def cleanup(self, sync=True):
+    def cleanup(self, wait=True):
         if self.listening_port is not None:
             self.listening_port.stopListening()
             self.listening_port = None
@@ -300,7 +300,7 @@ class RelayConnectBase(ConnectBase):
             msg = 'Reserved session at %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
             self.logger.info(msg)
         except:
-            msrp.loseConnection(sync=False)
+            msrp.loseConnection(wait=False)
             raise
         return msrp
 
@@ -317,9 +317,9 @@ class RelayConnectBase(ConnectBase):
     def getHost(self):
         return self.msrp.getHost()
 
-    def cleanup(self, sync=True):
+    def cleanup(self, wait=True):
         if self.msrp is not None:
-            self.msrp.loseConnection(sync=sync)
+            self.msrp.loseConnection(wait=wait)
             self.msrp = None
 
 class ConnectorRelay(RelayConnectBase):
@@ -330,7 +330,7 @@ class ConnectorRelay(RelayConnectBase):
                 self.msrp.bind(full_remote_path)
             return self.msrp
         except:
-            self.msrp.loseConnection(sync=False)
+            self.msrp.loseConnection(wait=False)
             raise
         finally:
             self.msrp = None
@@ -343,7 +343,7 @@ class AcceptorRelay(RelayConnectBase):
                 self.msrp.accept_binding(full_remote_path)
             return self.msrp
         except:
-            self.msrp.loseConnection(sync=False)
+            self.msrp.loseConnection(wait=False)
             raise
         finally:
             self.msrp = None
@@ -432,8 +432,8 @@ class MSRPServer(ConnectBase):
             chunk = msrp.read_chunk(10000)
             ToPath = tuple(chunk.headers['To-Path'].decoded)
             if len(ToPath)!=1:
-                msrp.write_response(chunk, 400, 'Invalid To-Path', sync=False)
-                msrp.loseConnection(sync=False)
+                msrp.write_response(chunk, 400, 'Invalid To-Path', wait=False)
+                msrp.loseConnection(wait=False)
                 return
             ToPath = ToPath[0]
             if ToPath in self.expected_local_uris:
@@ -442,8 +442,8 @@ class MSRPServer(ConnectBase):
                     msrp.logger = logger
                 msrp.local_uri = ToPath
             else:
-                msrp.write_response(chunk, 481, 'Unknown To-Path', sync=False)
-                msrp.loseConnection(sync=False)
+                msrp.write_response(chunk, 481, 'Unknown To-Path', wait=False)
+                msrp.loseConnection(wait=False)
                 return
             FromPath = tuple(chunk.headers['From-Path'].decoded)
             # at this point, must wait for complete() function to be called which will
