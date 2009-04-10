@@ -150,7 +150,7 @@ class MSRPSession(object):
             self.writer_job.link(self.reader_job)
             try:
                 while self.state in ['CONNECTED', 'FLUSHING']:
-                    chunk = self.msrp.read_chunk()
+                    chunk = self.msrp.read_chunk(self.INCOMING_CHUNK_SIZE)
                     if chunk.method is None: # response
                         self._handle_incoming_response(chunk)
                     elif chunk.method=='SEND':
