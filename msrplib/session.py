@@ -255,7 +255,7 @@ class MSRPSession(object):
             self.expected_responses[id] = cb_and_timer
         try:
             self.msrp.write(chunk.encode())
-        except Exception:
+        except:
             if response_cb is not None:
                 self.expected_responses.pop(id, None)
             raise
