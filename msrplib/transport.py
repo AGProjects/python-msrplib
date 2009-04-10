@@ -1,7 +1,6 @@
 # Copyright (C) 2008-2009 AG Projects. See LICENSE for details
 
 import random
-from copy import copy
 from application import log
 from twisted.internet.error import ConnectionDone
 from eventlet.twistedutil.protocol import GreenTransportBase
@@ -216,10 +215,14 @@ class MSRPTransport(GreenTransportBase):
                     msrpdata.segment = 1
                 else:
                     msrpdata.segment += 1
-                self._msrpdata = copy(msrpdata)
+                self._msrpdata = msrpdata.copy()
                 msrpdata.data = data
                 msrpdata.contflag = '+'
                 msrpdata.final = False
+                fro, to, total = msrpdata.byte_range
+                msrpdata.add_header(protocol.ByteRangeHeader((fro, fro+len(msrpdata.data), total)))
+                self._msrpdata.add_header(protocol.ByteRangeHeader((fro+len(msrpdata.data), None, total)))
+                self.logger.debug('read_chunk -> (virtual) %r' % (msrpdata, ))
                 return msrpdata
             func, param = self._wait()
         if func == data_final_write:
