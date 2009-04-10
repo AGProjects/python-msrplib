@@ -302,14 +302,22 @@ class MSRPData(object):
     segment = None
     final = True
 
-    def __init__(self, transaction_id, method = None, code = None, comment = None):
+    def __init__(self, transaction_id, method=None, code=None, comment=None, headers=None, data='', contflag='$'):
         self.transaction_id = transaction_id
         self.method = method
         self.code = code
         self.comment = comment
-        self.headers = {}
-        self.data = ''
-        self.contflag = '$'
+        if headers is None:
+            headers = {}
+        self.headers = headers
+        self.data = data
+        self.contflag = contflag
+
+    def copy(self):
+        chunk = self.__class__(self.transaction_id)
+        chunk.__dict__.update(self.__dict__)
+        chunk.headers = dict(self.headers.items())
+        return chunk
 
     def __str__(self):
         if self.method is None:
@@ -330,11 +338,10 @@ class MSRPData(object):
             description = "%s %s" % (self.transaction_id, self.method)
         if self.message_id is not None:
             description += ' Message-ID=%s' % self.message_id
-        if "Failure-Report" in self.headers:
-            description += ' Failure-Report=%s' % self.headers["Failure-Report"].decoded
-        if "Success-Report" in self.headers:
-            description += ' Success-Report=%s' % self.headers["Success-Report"].decoded
-        return '<%s at %s %s>' % (klass, hex(id(self)), description)
+        for key, value in self.headers.items():
+            description += ' %s=%r' % (key, value.encoded)
+        description += ' len=%s' % len(self.data)
+        return '<%s at %s %s %s>' % (klass, hex(id(self)), description, self.contflag)
 
     def __eq__(self, other):
         if not isinstance(other, MSRPData):
