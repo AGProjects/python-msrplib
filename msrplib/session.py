@@ -2,6 +2,8 @@
 
 from __future__ import with_statement
 import sys
+import random
+import traceback
 from time import time
 from twisted.internet.error import ConnectionClosed, ConnectionDone
 from twisted.python.failure import Failure
@@ -11,7 +13,7 @@ from eventlet.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import make_response, MSRPTransactionError
-from msrplib.protocol import StatusHeader
+from msrplib.protocol import StatusHeader, ContentTypeHeader
 
 ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
 
@@ -48,6 +50,29 @@ def contains_mime_type(mimetypelist, mimetype):
     return False
 
 
+class OutgoingFile(object):
+# will not implement support for CPIM here, because it's already complicated
+# instead, use a file wrapper that will concatenate together CPIM header and the actual file
+
+    def __init__(self, fileobj, size, content_type=None, position=0, message_id=None):
+        self.fileobj = fileobj
+        self.size = size
+        self.position = position
+        if message_id is None:
+            message_id = '%x' % random.getrandbits(64)
+        self.message_id = message_id
+        self.headers = {}
+        if content_type is not None:
+            self.headers[ContentTypeHeader.name] = ContentTypeHeader(content_type)
+
+    def on_transaction_response(self, chunk):
+        # do something meaningful in case of an error?
+        pass
+
+    # TODO: how to cancel/pause file transfer? def cancel(self): ...
+
+GOT_NEW_FILE = object()
+
 class MSRPSession(object):
     # if incoming chunk is bigger than this, split it (for the reporting purposes)
     INCOMING_CHUNK_SIZE = 1024*16
@@ -55,14 +80,17 @@ class MSRPSession(object):
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
 
+    # when sending a file, a chunk of this size will be read and sent uninterruptibly
+    FILE_PIECE_SIZE = 1024*4
+
     def __init__(self, msrptransport, accept_types=['*'], on_incoming_cb=None):
         self.msrp = msrptransport
         self.accept_types = accept_types
         if on_incoming_cb is not None:
             self._on_incoming_cb = on_incoming_cb
         self.expected_responses = {}
-        #self.expected_success_reports = {}
         self.outgoing = coros.queue()
+        self.outgoing_files = coros.queue()
         self.reader_job = proc.spawn(self._reader)
         self.writer_job = proc.spawn(self._writer)
         self.state = 'CONNECTED' # -> 'FLUSHING' -> 'CLOSING' -> 'DONE'
@@ -197,16 +225,71 @@ class MSRPSession(object):
             self.msrp.loseConnection(wait=False)
             self.set_state('DONE')
 
+    def _write_file(self):
+        outgoing_file = self.outgoing_files.items[0][0]
+        if outgoing_file.size is None or outgoing_file.position < outgoing_file.size:
+            try:
+                piece = outgoing_file.fileobj.read(self.FILE_PIECE_SIZE)
+            except Exception:
+                self.logger.err('error while reading file %r\n%s' % (outgoing_file, traceback.format_exc()))
+                return
+            self.logger.debug('_write_file: read %s bytes from %s' % (len(piece), outgoing_file))
+            chunk = self.msrp.make_chunk(contflag='X', start=outgoing_file.position+1, end='*', length=outgoing_file.size or '*', message_id=outgoing_file.message_id)
+            chunk.headers.update(outgoing_file.headers)
+            id = chunk.transaction_id
+            assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
+            cb_and_timer = [outgoing_file.on_transaction_response, None]
+            self.expected_responses[id] = cb_and_timer
+            try:
+                self.msrp.write(chunk.encode_start())
+                self.logger.debug('_write_file: wrote header %r' % chunk)
+                try:
+                    while piece:
+                        self.msrp.write(piece)
+                        outgoing_file.position += len(piece)
+                        #self.logger.debug('_write_file: wrote %s bytes' % len(piece))
+                        for x in self.outgoing.items:
+                            # stop sending the file if there is something else in the queue other than files
+                            if x is not GOT_NEW_FILE:
+                                return
+                        if outgoing_file.size is None or outgoing_file.position < outgoing_file.size:
+                            try:
+                                piece = outgoing_file.fileobj.read(self.FILE_PIECE_SIZE)
+                            except Exception:
+                                self.logger.err('error while reading file %r\n%s' % (outgoing_file, traceback.format_exc()))
+                                return
+                        else:
+                            break
+                finally:
+                    if not piece or outgoing_file.position == outgoing_file.size:
+                        contflag = '$'
+                        if self.outgoing_files:
+                            self.outgoing_files.wait()
+                    else:
+                        contflag = '+'
+                    self.msrp.write(chunk.encode_end(contflag))
+                    self.logger.debug('_write_file: wrote chunk end %s' % contflag)
+            except:
+                self.expected_responses.pop(id, None)
+                raise
+            else:
+                timeout_error = Response408Timeout if chunk.failure_report=='yes' else Response200OK
+                timer = api.get_hub().schedule_call_global(self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
+                self.last_expected_response = time() + self.RESPONSE_TIMEOUT
+                cb_and_timer[1] = timer
+
     def _writer(self):
         try:
-            while self.state=='CONNECTED':
-                send_params = self.outgoing.wait()
+            while self.state=='CONNECTED' or (self.state=='FLUSHING' and self.outgoing and self.outgoing_files):
+                if not self.outgoing and self.outgoing_files:
+                    send_params = GOT_NEW_FILE
+                else:
+                    send_params = self.outgoing.wait()
                 if send_params is None:
                     break
-                self._write_chunk(*send_params)
-            while self.state=='FLUSHING' and self.outgoing:
-                send_params = self.outgoing.wait()
-                if send_params is not None:
+                elif send_params is GOT_NEW_FILE and self.outgoing_files:
+                    self._write_file()
+                else:
                     self._write_chunk(*send_params)
         except ConnectionClosedErrors + (proc.LinkedExited, proc.ProcExit), ex:
             self.logger.debug('writer: exiting because of %r' % (ex, ))
@@ -244,6 +327,14 @@ class MSRPSession(object):
         if self.msrp._disconnected_event.ready():
             raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
         self.outgoing.send((chunk, response_cb))
+
+    def send_file(self, outgoing_file):
+        if self.state != 'CONNECTED':
+            raise MSRPSessionError('Cannot send chunk because MSRPSession is %s' % self.state)
+        if self.msrp._disconnected_event.ready():
+            raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
+        self.outgoing_files.send(outgoing_file)
+        self.outgoing.send(GOT_NEW_FILE) # just to wake up the writer greenlet
 
     def _write_chunk(self, chunk, response_cb=None):
         id = chunk.transaction_id
