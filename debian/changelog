@@ -1,8 +1,32 @@
-python-msrplib (1.0.0) unstable; urgency=low
+python-msrplib (0.10.0) unstable; urgency=low
 
-  * 
+  * made all the library classes new-style (derive from object)
+  * replaced TrafficLogger and StateLogger with a single Logger class
+  * fixed typo in AcceptorDirect.getHost()
+  * made MSRPData.status property return StatusHeader instance, not a tuple
+  * fixed MSRPTransport.make_chunk() to support REPORT requests
+  * made ByteRangeHeader.decoded return a tuple instead of a list
+  * made MSRPSession fire a success report if needed
+  * test system: a few minor improvements
+  * added unit test for success reports
+  * fixed typo in MSRPTransport that made incoming chunks larger than 16K fail with ChunkParseError
+  * fixed AttributeError in cleanup() methods
+  * added __repr__ to connectors
+  * limit debug log messages' length
+  * set the timeout to 30 seconds
+  * fixed ConnectorDirect.prepare() to update zero port in local_uri with 2855
+  * added a few docstrings
+  * renamed 'sync' argument into 'wait' in all methods where it's used
+  * added copy() method to protocol.MSRPData
+  * fixed bug in MSRPTransport.read_chunk's incoming chunk splitting functionality:
+    virtual chunks had incorrect Byte-Range header
+  * made session actually pass INCOMING_CHUNK_SIZE to transport's read_chunk and thus split the incoming chunks
+  * added support for sending files with MSRPSession: session.OutgoingFile class and MSRPSession.send_file() method
+  * added examples for sending and receiving a message
+  * added example for file transfer
+  * updated eventlet dependency to 0.8.10
 
- -- Adrian Georgescu <ag@ag-projects.com>  Tue, 17 Mar 2009 20:33:13 +0100
+ -- Denis Bilenko <denis@ag-projects.com>  Mon, 13 Apr 2009 16:28:23 +0700
 
 python-msrplib (0.9.2) unstable; urgency=low
 
