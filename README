@@ -7,6 +7,8 @@ http://ag-projects.com
 
 Authors: Denis Bilenko, Ruud Klaver
 
+Home page: http://download.ag-projects.com/MSRP/
+
 
 Description
 -----------
@@ -35,8 +37,47 @@ MSRP sessions are defined in RFC 4975. The relay extension that can be used
 for NAT traversal purposes is defined in RFC 4976.
 
 
-License
--------
+Debian package installation
+---------------------------
 
-See LICENSE file.
+Add the following lines to /etc/apt/sources.list
+
+# AG Projects software
+deb     http://ag-projects.com/debian unstable main
+deb-src http://ag-projects.com/debian unstable main
+
+Install the AG Projects debian software signing key:
+
+wget http://download.ag-projects.com/agp-debian-gpg.key
+apt-key add agp-debian-gpg.key
+
+After that, run:
+
+sudo apt-get update
+sudo apt-get install python-msrplib
+
+
+Manual installation
+-------------------
+
+Download the tra archive from http://download.ag-projects.com/MSRP. 
+
+Extract the tar archive and run under the newly created directory:
+
+sudo python setup.py install
+
+
+Development version
+-------------------
+
+The source code is managed using darcs version control tool. The darcs
+repository can be fetched with:
+
+darcs get http://devel.ag-projects.com/repositories/python-msrplib
+
+To obtain the incremental changes after the initial get, go to the
+python-msrplib directory and run:
+
+cd python-msrplib
+darcs pull -a
 
