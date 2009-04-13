@@ -1,5 +1,6 @@
 recursive-include debian  changelog compat control copyright pycompat pyversions rules
 recursive-include test *.py *.crt *.key
+recursive-include examples *.py
 include MANIFEST.in LICENSE
 prune debian/python-msrplib
 prune debian/tmp
