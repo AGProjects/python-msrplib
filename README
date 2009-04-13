@@ -60,7 +60,7 @@ sudo apt-get install python-msrplib
 Manual installation
 -------------------
 
-Download the tra archive from http://download.ag-projects.com/MSRP. 
+Download the tar archive from http://download.ag-projects.com/MSRP. 
 
 Extract the tar archive and run under the newly created directory:
 
