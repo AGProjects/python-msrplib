@@ -25,6 +25,7 @@ python-msrplib (0.10.0) unstable; urgency=low
   * added examples for sending and receiving a message
   * added example for file transfer
   * updated eventlet dependency to 0.8.10
+  * added installation instructions
 
  -- Denis Bilenko <denis@ag-projects.com>  Mon, 13 Apr 2009 16:28:23 +0700
 
