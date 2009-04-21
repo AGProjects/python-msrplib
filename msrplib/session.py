@@ -159,7 +159,7 @@ class MSRPSession(object):
                 self.outgoing.send((response, None))
         if code==200:
             self._on_incoming_cb(chunk)
-        if chunk.final and chunk.success_report=='yes':
+        if chunk.success_report=='yes':
             report = self.msrp.make_chunk(method='REPORT', message_id=chunk.message_id)
             report.add_header(StatusHeader('000 200 OK'))
             byterange = chunk.headers.get('Byte-Range')
