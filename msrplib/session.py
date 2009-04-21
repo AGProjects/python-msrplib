@@ -13,7 +13,7 @@ from eventlet.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import make_response, MSRPTransactionError
-from msrplib.protocol import StatusHeader, ContentTypeHeader
+from msrplib.protocol import StatusHeader, ContentTypeHeader, ByteRangeHeader
 
 ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
 
@@ -163,8 +163,13 @@ class MSRPSession(object):
             report = self.msrp.make_chunk(method='REPORT', message_id=chunk.message_id)
             report.add_header(StatusHeader('000 200 OK'))
             byterange = chunk.headers.get('Byte-Range')
-            if byterange is not None:
-                report.add_header(byterange)
+            if byterange is None:
+                fro = 1
+                total = len(chunk.data)
+            else:
+                fro, to, total = byterange.decoded
+            byterange = ByteRangeHeader((fro, fro+len(chunk.data)-1, total))
+            report.add_header(byterange)
             self.outgoing.send((report, None))
 
     def _reader(self):
