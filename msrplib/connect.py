@@ -155,10 +155,8 @@ class ConnectBase(object):
         self.logger.info('Connected to %s:%s' % (msrp.getPeer().host, msrp.getPeer().port))
         return msrp
 
-    def _listen(self, local_uri, handler, factory=None):
+    def _listen(self, local_uri, factory):
         from twisted.internet import reactor
-        if factory is None:
-            factory = SpawnFactory(handler, MSRPTransport, local_uri, logger=self.logger)
         listenFuncName = 'listen' + local_uri.protocol_name
         listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
         port = getattr(reactor, listenFuncName)(*listenFuncArgs, **{'interface': local_uri.host})
@@ -224,7 +222,8 @@ class AcceptorDirect(ConnectBase):
             local_uri = self.generate_local_uri()
         self.transport_event = coros.event()
         local_uri.host = gethostbyname(local_uri.host)
-        self.listening_port = self._listen(local_uri, self.transport_event.send)
+        factory = SpawnFactory(self.transport_event, MSRPTransport, local_uri, logger=self.logger)
+        self.listening_port = self._listen(local_uri, factory)
         self.local_uri = local_uri
         return [local_uri]
 
@@ -394,7 +393,7 @@ class MSRPServer(ConnectBase):
         self.expected_local_uris = {} # maps local_uri -> Logger instance
         self.expected_remote_paths = {} # maps full_remote_path -> event
         self.new_full_remote_path_notifier = Notifier()
-        self.factory = SpawnFactory(self._incoming_handler,MSRPTransport,local_uri=None,logger=self.logger)
+        self.factory = SpawnFactory(self._incoming_handler, MSRPTransport, local_uri=None, logger=self.logger)
 
     def prepare(self, local_uri=None, logger=None):
         """Start a listening port specified by local_uri if there isn't one on that port/interface already.
@@ -420,7 +419,7 @@ class MSRPServer(ConnectBase):
                     local_uri.port = port.getHost().port
                     need_listen = False
         if need_listen:
-            port = self._listen(local_uri, self._incoming_handler, factory=self.factory)
+            port = self._listen(local_uri, self.factory)
             self.ports.setdefault(local_uri.host, {})[local_uri.port] = (local_uri.use_tls, port)
         self.expected_local_uris[local_uri] = logger
         return [local_uri]
