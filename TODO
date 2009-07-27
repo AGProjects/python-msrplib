@@ -1,1 +1,3 @@
  * handle body of first chunk received
+ * Add NICKNAME method for multi-party chat
+   http://tools.ietf.org/html/draft-ietf-simple-chat-04#section-7
