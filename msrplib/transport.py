@@ -287,7 +287,11 @@ class MSRPTransport(GreenTransportBase):
         self.write_response(chunk, code, comment)
         if 'Content-Type' in chunk.headers or len(chunk.data)>0:
             # deliver chunk to read_chunk
-            raise NotImplementedError
+            data = chunk.data
+            chunk.data = ''
+            self._data_start(chunk)
+            self._data_write(data, final=True)
+            self._data_end(chunk.contflag)
 
     def check_incoming_SEND_chunk(self, chunk):
         """Check the 'To-Path' and 'From-Path' of the incoming SEND chunk.
