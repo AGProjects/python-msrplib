@@ -454,6 +454,9 @@ class MSRPProtocol(LineReceiver):
                     self._recepient._data_start(self.data)
                     self._recepient._data_end(continuation)
                     self._reset()
+                    # This line is only here because it allows the subclass MSRPPRotocol_withLogging
+                    # to know that the packet ended. In need of redesign. -Luci
+                    self.setLineMode('')
                 else:
                     self.line_count += 1
                     if self.line_count > self.MAX_LINES:

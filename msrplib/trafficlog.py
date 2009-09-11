@@ -129,11 +129,11 @@ class Logger(object):
     for method in ['msg', 'info', 'debug', 'warn', 'error', 'fatal']:
         exec """def %s(self, message, **context): return log.%s(self.prefix + message, **context)""" % (method, method)
 
-    def report_out(self, data, transport, new_chunk=False):
+    def report_out(self, data, transport, new_chunk=True):
         if self.traffic_logger:
             return self.traffic_logger.report_out(data, transport, new_chunk)
 
-    def report_in(self, data, transport, new_chunk=False):
+    def report_in(self, data, transport, new_chunk=False, packet_done=False):
         if self.traffic_logger:
             return self.traffic_logger.report_in(data, transport, new_chunk)
 

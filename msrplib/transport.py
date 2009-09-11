@@ -63,6 +63,7 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
 
     def setLineMode(self, extra):
         self._new_chunk = True
+        self._recepient.logger.report_in(None, self.transport, packet_done=True)
         return protocol.MSRPProtocol.setLineMode(self, extra)
 
 
