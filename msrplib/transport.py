@@ -199,7 +199,6 @@ class MSRPTransport(GreenTransportBase):
         legal to set `size' to zero (which would mean return a chunk as long as you get
         some data, regardless how small)
         """
-        data = ''
         if self._msrpdata is None:
             func, msrpdata = self._wait()
             if func!=data_start:
@@ -208,6 +207,7 @@ class MSRPTransport(GreenTransportBase):
                 raise ChunkParseError
         else:
             msrpdata = self._msrpdata
+        data = msrpdata.data
         func, param = self._wait()
         while func==data_write:
             data += param
@@ -216,13 +216,18 @@ class MSRPTransport(GreenTransportBase):
                     msrpdata.segment = 1
                 else:
                     msrpdata.segment += 1
+                last_chunk = msrpdata.byte_range[0]+len(data)-1 == msrpdata.byte_range[2]
                 self._msrpdata = msrpdata.copy()
                 msrpdata.data = data
-                msrpdata.contflag = '+'
-                msrpdata.final = False
+                msrpdata.contflag = '+' if last_chunk else '$'
+                msrpdata.final = last_chunk
                 fro, to, total = msrpdata.byte_range
-                msrpdata.add_header(protocol.ByteRangeHeader((fro, fro+len(msrpdata.data), total)))
-                self._msrpdata.add_header(protocol.ByteRangeHeader((fro+msrpdata.size, None, total)))
+                msrpdata.add_header(protocol.ByteRangeHeader((fro, None, total)))
+                if last_chunk:
+                    self._msrpdata = msrpdata
+                    return self.read_chunk(size)
+                else:
+                    self._msrpdata.add_header(protocol.ByteRangeHeader((fro+msrpdata.size, None, total)))
                 self.logger.debug('read_chunk -> (virtual) %r' % (msrpdata, ))
                 return msrpdata
             func, param = self._wait()
