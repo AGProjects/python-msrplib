@@ -165,10 +165,10 @@ class MSRPSession(object):
             byterange = chunk.headers.get('Byte-Range')
             if byterange is None:
                 fro = 1
-                total = len(chunk.data)
+                total = chunk.size
             else:
                 fro, to, total = byterange.decoded
-            byterange = ByteRangeHeader((fro, fro+len(chunk.data)-1, total))
+            byterange = ByteRangeHeader((fro, fro+chunk.size-1, total))
             report.add_header(byterange)
             self.outgoing.send((report, None))
 

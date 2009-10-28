@@ -222,7 +222,7 @@ class MSRPTransport(GreenTransportBase):
                 msrpdata.final = False
                 fro, to, total = msrpdata.byte_range
                 msrpdata.add_header(protocol.ByteRangeHeader((fro, fro+len(msrpdata.data), total)))
-                self._msrpdata.add_header(protocol.ByteRangeHeader((fro+len(msrpdata.data), None, total)))
+                self._msrpdata.add_header(protocol.ByteRangeHeader((fro+msrpdata.size, None, total)))
                 self.logger.debug('read_chunk -> (virtual) %r' % (msrpdata, ))
                 return msrpdata
             func, param = self._wait()
@@ -285,7 +285,7 @@ class MSRPTransport(GreenTransportBase):
         else:
             code, comment = error.code, error.comment
         self.write_response(chunk, code, comment)
-        if 'Content-Type' in chunk.headers or len(chunk.data)>0:
+        if 'Content-Type' in chunk.headers or chunk.size>0:
             # deliver chunk to read_chunk
             data = chunk.data
             chunk.data = ''

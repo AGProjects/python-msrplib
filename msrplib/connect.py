@@ -459,7 +459,7 @@ class MSRPServer(ConnectBase):
             error = MSRPNoSuchSessionError
         if error is None:
             msrp.write_response(chunk, 200, 'OK')
-            if 'Content-Type' in chunk.headers or len(chunk.data)>0:
+            if 'Content-Type' in chunk.headers or chunk.size>0:
                 # chunk must be made available to read_chunk() again because it has payload
                 raise NotImplementedError
             if event is not None:

@@ -340,7 +340,7 @@ class MSRPData(object):
             description += ' Message-ID=%s' % self.message_id
         for key, value in self.headers.items():
             description += ' %s=%r' % (key, value.encoded)
-        description += ' len=%s' % len(self.data)
+        description += ' len=%s' % self.size
         return '<%s at %s %s %s>' % (klass, hex(id(self)), description, self.contflag)
 
     def __eq__(self, other):
@@ -398,6 +398,10 @@ class MSRPData(object):
             return self.headers["Success-Report"].decoded
         else:
             return "no"
+
+    @property
+    def size(self):
+        return len(self.data)
 
     def encode_start(self):
         data = []
