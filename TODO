@@ -1,1 +1,4 @@
- * handle body of first chunk received
+ * Capture DNS lookups related to MSRP relay reservation.
+ * Allow multiple relays to be specified (for fallback) when making an MSRP
+   connection.
+ * Make timeouts configurable.
