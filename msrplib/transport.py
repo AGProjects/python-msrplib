@@ -150,7 +150,7 @@ class MSRPTransport(GreenTransportBase):
                 contflag = '$'
             else:
                 contflag = '+'
-        chunk.add_header(protocol.ByteRangeHeader((start, end, length)))
+        chunk.add_header(protocol.ByteRangeHeader((start, end if length <= 2048 else None, length)))
         if message_id is None:
             chunk.add_header(protocol.MessageIDHeader('%x' % random.getrandbits(64)))
         else:
