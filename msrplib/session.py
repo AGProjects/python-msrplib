@@ -12,7 +12,7 @@ from eventlet import api, coros, proc
 from eventlet.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
-from msrplib.transport import make_response, MSRPTransactionError
+from msrplib.transport import make_report, make_response, MSRPTransactionError
 from msrplib.protocol import StatusHeader, ContentTypeHeader, ByteRangeHeader
 
 ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
@@ -157,20 +157,11 @@ class MSRPSession(object):
             response = make_response(chunk, code, comment)
             if response is not None:
                 self.outgoing.send((response, None))
-        if code==200:
+        if code == 200:
             self._on_incoming_cb(chunk)
-        if chunk.success_report=='yes':
-            report = self.msrp.make_chunk(method='REPORT', message_id=chunk.message_id)
-            report.add_header(StatusHeader('000 200 OK'))
-            byterange = chunk.headers.get('Byte-Range')
-            if byterange is None:
-                fro = 1
-                total = chunk.size
-            else:
-                fro, to, total = byterange.decoded
-            byterange = ByteRangeHeader((fro, fro+chunk.size-1, total))
-            report.add_header(byterange)
-            self.outgoing.send((report, None))
+            report = make_report(chunk, 200, 'OK')
+            if report is not None:
+                self.outgoing.send((report, None))
 
     def _reader(self):
         """Wait forever for new chunks. Notify the user about the good ones through self._on_incoming_cb.

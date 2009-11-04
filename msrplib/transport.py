@@ -67,6 +67,25 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
         return protocol.MSRPProtocol.setLineMode(self, extra)
 
 
+def make_report(chunk, code, comment):
+    if chunk.success_report == 'yes' or (chunk.failure_report in ('yes', 'partial') and code != 200):
+        report = protocol.MSRPData(transaction_id='%x' % random.getrandbits(64), method='REPORT')
+        report.add_header(protocol.ToPathHeader(chunk.headers['From-Path'].decoded))
+        report.add_header(protocol.FromPathHeader([chunk.headers['To-Path'].decoded[0]]))
+        report.add_header(protocol.StatusHeader('000 %d %s' % (code, comment)))
+        report.add_header(protocol.MessageIDHeader(chunk.message_id))
+        byterange = chunk.headers.get('Byte-Range')
+        if byterange is None:
+            start = 1
+            total = chunk.size
+        else:
+            start, end, total = byterange.decoded
+        report.add_header(protocol.ByteRangeHeader((start, start+chunk.size-1, total)))
+        return report
+    else:
+        return None
+
+
 def make_response(chunk, code, comment):
     """Construct a response to a request as described in RFC4975 Section 7.2.
     If the response is not needed, return None.
