@@ -81,7 +81,7 @@ class MSRPSession(object):
     SHUTDOWN_TIMEOUT = 1
 
     # when sending a file, a chunk of this size will be read and sent uninterruptibly
-    FILE_PIECE_SIZE = 1024*4
+    FILE_PIECE_SIZE = 1024*64
 
     def __init__(self, msrptransport, accept_types=['*'], on_incoming_cb=None):
         self.msrp = msrptransport
