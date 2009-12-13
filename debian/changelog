@@ -4,6 +4,7 @@ python-msrplib (0.11.0) unstable; urgency=low
   * Added support for initial chunk with data
   * Added size property to MSRPData objects
   * Fixed Byte-Range header added when framing incoming chunks
+  * Added dependency to python-eventlet version 0.8.11
 
  -- Adrian Georgescu <ag@ag-projects.com>  Thu, 29 Oct 2009 22:51:46 +0100
 
