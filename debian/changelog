@@ -1,12 +1,21 @@
 python-msrplib (0.11.0) unstable; urgency=low
 
+  * Fix Byte-Range in generated success reports
+  * Generate success reports more often (once per virtual chunk, not
+    once per chunk)
+  * AcceptorDirect: don't lose an exception like GNUTLSError that
+    happens before the transport is initialized
   * Added workaround in logging in order to support buffering
   * Added support for initial chunk with data
   * Added size property to MSRPData objects
   * Fixed Byte-Range header added when framing incoming chunks
+  * Fixed creation of Byte-Range header for chunks larger than 2KiB
+  * Added make_report function
+  * Fixed logging when end of packet is reached
+  * Changed block size with which files are transferred from 4 to 64K
   * Added dependency to python-eventlet version 0.8.11
 
- -- Adrian Georgescu <ag@ag-projects.com>  Thu, 29 Oct 2009 22:51:46 +0100
+ -- Lucian Stanescu <luci@ag-projects.com>  Mon, 14 Dec 2009 12:21:39 +0000
 
 python-msrplib (0.10.0) unstable; urgency=low
 
