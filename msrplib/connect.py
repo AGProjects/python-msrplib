@@ -44,6 +44,7 @@ can be used multiple times.
 from __future__ import with_statement
 import random
 from twisted.internet.address import IPv4Address
+from twisted.names.srvconnect import SRVConnector
 from application.system import default_host_ip
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet import coros
@@ -126,8 +127,21 @@ class MSRPAuthTimeout(MSRPTransactionError, TimeoutMixin):
     seconds = 30
 
 
+class MSRPSRVConnector(SRVConnector):
+
+    def pickServer(self):
+        assert self.servers is not None
+        assert self.orderedServers is not None
+
+        if not self.servers and not self.orderedServers:
+            # no SRV record, fall back..
+            return self.domain, 2855
+
+        return SRVConnector.pickServer(self)
+
+
 class ConnectBase(object):
-    SRVConnectorClass = None
+    SRVConnectorClass = MSRPSRVConnector
 
     def __init__(self, logger=None):
         if logger is None:
