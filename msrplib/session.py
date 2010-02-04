@@ -237,11 +237,14 @@ class MSRPSession(object):
             cb_and_timer = [outgoing_file.on_transaction_response, None]
             self.expected_responses[id] = cb_and_timer
             try:
-                self.msrp.write(chunk.encode_start())
+                trailer = chunk.encode_start()
+                self.msrp.write(trailer)
+                self.logger.sent_new_chunk(trailer, self.msrp, chunk=chunk)
                 self.logger.debug('_write_file: wrote header %r' % chunk)
                 try:
                     while piece:
                         self.msrp.write(piece)
+                        self.logger.sent_chunk_data(piece, self.msrp, transaction_id=chunk.transaction_id)
                         outgoing_file.position += len(piece)
                         #self.logger.debug('_write_file: wrote %s bytes' % len(piece))
                         for x in self.outgoing.items:
@@ -263,7 +266,9 @@ class MSRPSession(object):
                             self.outgoing_files.wait()
                     else:
                         contflag = '+'
-                    self.msrp.write(chunk.encode_end(contflag))
+                    footer = chunk.encode_end(contflag)
+                    self.msrp.write(footer)
+                    self.logger.sent_chunk_end(footer, self.msrp, transaction_id=chunk.transaction_id)
                     self.logger.debug('_write_file: wrote chunk end %s' % contflag)
             except:
                 self.expected_responses.pop(id, None)
@@ -341,7 +346,7 @@ class MSRPSession(object):
             cb_and_timer = [response_cb, None]
             self.expected_responses[id] = cb_and_timer
         try:
-            self.msrp.write(chunk.encode())
+            self.msrp.write_chunk(chunk)
         except:
             if response_cb is not None:
                 self.expected_responses.pop(id, None)

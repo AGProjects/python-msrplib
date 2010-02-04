@@ -137,6 +137,15 @@ class Logger(object):
         if self.traffic_logger:
             return self.traffic_logger.report_in(data, transport, new_chunk)
 
+    def received_new_chunk(self, data, transport, chunk):
+        pass
+
+    def received_chunk_data(self, data, transport, transaction_id):
+        pass
+
+    def received_chunk_end(self, data, transport, transaction_id):
+        pass
+
 
 class FileWithTell(object):
 

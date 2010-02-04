@@ -45,6 +45,7 @@ from __future__ import with_statement
 import random
 from twisted.internet.address import IPv4Address
 from twisted.names.srvconnect import SRVConnector
+from application.python.util import Null
 from application.system import default_host_ip
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet import coros
@@ -54,7 +55,6 @@ from eventlet.green.socket import gethostbyname
 from msrplib import protocol, MSRPError
 from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest, MSRPNoSuchSessionError
 from msrplib.digest import process_www_authenticate
-from msrplib.trafficlog import Logger
 
 __all__ = ['MSRPRelaySettings',
            'MSRPTimeout',
@@ -144,9 +144,7 @@ class ConnectBase(object):
     SRVConnectorClass = MSRPSRVConnector
 
     def __init__(self, logger=None):
-        if logger is None:
-            logger = Logger()
-        self.logger = logger
+        self.logger = logger or Null()
 
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
@@ -272,7 +270,7 @@ class AcceptorDirect(ConnectBase):
 
 
 def _deliver_chunk(msrp, chunk):
-    msrp.write(chunk.encode())
+    msrp.write_chunk(chunk)
     with MSRPAuthTimeout.timeout():
         response = msrp.read_chunk()
     if response.method is not None:

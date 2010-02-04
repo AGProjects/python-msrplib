@@ -200,6 +200,15 @@ class MSRPTransport(GreenTransportBase):
         self.logger.report_out(bytes, self.transport)
         return GreenTransportBase.write(self, bytes, wait)
 
+    def write_chunk(self, chunk, wait=True):
+        trailer = chunk.encode_start()
+        footer = chunk.encode_end(chunk.contflag)
+        self.write(trailer+chunk.data+footer, wait=wait)
+        self.logger.sent_new_chunk(trailer, self, chunk=chunk)
+        if chunk.data:
+            self.logger.sent_chunk_data(chunk.data, self, chunk.transaction_id)
+        self.logger.sent_chunk_end(footer, self, chunk.transaction_id)
+
     def read_chunk(self, size=None):
         """Wait for a new chunk and return it.
         If there was an error, close the connection and raise ChunkParseError.
@@ -277,7 +286,7 @@ class MSRPTransport(GreenTransportBase):
     def bind(self, full_remote_path):
         self._set_full_remote_path(full_remote_path)
         chunk = self.make_chunk()
-        self.write(chunk.encode())
+        self.write_chunk(chunk)
         response = self.read_chunk()
         if response.code != 200:
             self.loseConnection(wait=False)
@@ -298,7 +307,7 @@ class MSRPTransport(GreenTransportBase):
             raise
         else:
             if response is not None:
-                self.write(response.encode(), wait=wait)
+                self.write_chunk(response, wait=wait)
 
     def accept_binding(self, full_remote_path):
         self._set_full_remote_path(full_remote_path)
