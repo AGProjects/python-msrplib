@@ -436,6 +436,9 @@ class MSRPProtocol(LineReceiver):
         self._chunk_header = ''
         self._recepient = recepient
         self._reset()
+        self.term_buf = ''
+        self.term_re = None
+        self.term_substrings = []
 
     def _reset(self):
         self._chunk_header = ''
@@ -448,14 +451,18 @@ class MSRPProtocol(LineReceiver):
     def lineReceived(self, line):
         if self.data:
             if len(line) == 0:
-                self.term_buf_len = 12 + len(self.data.transaction_id)
-                self.term_buf = ""
-                self.term = re.compile("^(.*)\r\n-------%s([$#+])\r\n(.*)$" % re.escape(self.data.transaction_id), re.DOTALL)
+                terminator = '\r\n-------' + self.data.transaction_id
+                continue_flags = [c+'\r\n' for c in '$#+']
+                self.term_buf = ''
+                self.term_re = re.compile("^(.*)%s([$#+])\r\n(.*)$" % re.escape(terminator), re.DOTALL)
+                self.term_substrings = [terminator[:i] for i in xrange(1, len(terminator)+1)] + [terminator+cont[:i] for cont in continue_flags for i in xrange(1, len(cont))]
+                self.term_substrings.reverse()
+
                 self._recepient.logger.received_new_chunk(self._chunk_header+self.delimiter, self.transport, chunk=self.data)
                 self._recepient._data_start(self.data)
                 self.setRawMode()
             else:
-                match = self.term.match(line)
+                match = self.term_re.match(line)
                 if match:
                     continuation = match.group(1)
                     self._recepient.logger.received_new_chunk(self._chunk_header, self.transport, chunk=self.data)
@@ -500,18 +507,17 @@ class MSRPProtocol(LineReceiver):
                 if len(rest_sp) > 1:
                     comment = rest_sp[1]
             self.data = MSRPData(transaction_id, method, code, comment)
-            self.term = re.compile("^-------%s([$#+])$" % re.escape(transaction_id))
+            self.term_re = re.compile("^-------%s([$#+])$" % re.escape(transaction_id))
             self._chunk_header = line+self.delimiter
 
     def lineLengthExceeded(self, line):
         self._reset()
 
     def rawDataReceived(self, data):
-        match_data = self.term_buf + data
-        match = self.term.match(match_data)
+        data = self.term_buf + data
+        match = self.term_re.match(data)
         if match: # we got the last data for this message
             contents, continuation, extra = match.groups()
-            contents = contents[len(self.term_buf):]
             if contents:
                 self._recepient.logger.received_chunk_data(contents, self.transport, transaction_id=self.data.transaction_id)
                 self._recepient._data_write(contents, final=True)
@@ -520,9 +526,15 @@ class MSRPProtocol(LineReceiver):
             self._reset()
             self.setLineMode(extra)
         else:
+            for term in self.term_substrings:
+                if data.endswith(term):
+                    self.term_buf = data[-len(term):]
+                    data = data[:-len(term)]
+                    break
+            else:
+                self.term_buf = ''
             self._recepient.logger.received_chunk_data(data, self.transport, transaction_id=self.data.transaction_id)
             self._recepient._data_write(data, final=False)
-            self.term_buf = match_data[-self.term_buf_len:]
 
     def connectionLost(self, reason):
         self._recepient._connectionLost(reason)
