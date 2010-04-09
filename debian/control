@@ -8,7 +8,7 @@ Standards-Version: 3.8.4
 
 Package: python-msrplib
 Architecture: all
-Depends: ${python:Depends}, ${misc:Depends}, python-application (>= 1.0.9), python-gnutls, python-twisted-core, python-twisted-names, python-zopeinterface, python-eventlet (>=0.8.11)
+Depends: ${python:Depends}, ${misc:Depends}, python-application (>= 1.0.9), python-gnutls, python-twisted-core, python-twisted-names, python-zopeinterface, python-eventlet-0.8
 Description: MSRP client library, implements RFC4975 and RFC4976
  Message Session Relay Protocol (MSRP) is a protocol for transmitting
  a series of related instant messages in the context of a session. Message
