@@ -1,3 +1,12 @@
+python-msrplib (0.11.1) unstable; urgency=low
+
+  * Fixed problem with 'msrps' string getting passed as a port in twisted
+  * Added alternative logging mechanism
+  * Fixed parsing of MSRP messages with content
+  * Updated dependencies
+
+ -- Saul Ibarra <saul@ag-projects.com>  Fri, 09 Apr 2010 10:44:26 +0200
+
 python-msrplib (0.11.0) unstable; urgency=low
 
   * Fix Byte-Range in generated success reports
