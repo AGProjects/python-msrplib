@@ -104,7 +104,7 @@ class TimeoutMixin(object):
         return timeout(cls.seconds, *throw_args)
 
 class MSRPTimeout(MSRPError, TimeoutMixin):
-    seconds = 30
+    seconds = 10
 
 class MSRPConnectTimeout(MSRPTimeout):
     pass
@@ -124,7 +124,7 @@ class MSRPRelayAuthError(MSRPTransactionError):
 class MSRPAuthTimeout(MSRPTransactionError, TimeoutMixin):
     code = 408
     comment = 'No response to AUTH request'
-    seconds = 30
+    seconds = 10
 
 
 class MSRPSRVConnector(SRVConnector):
