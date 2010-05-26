@@ -214,8 +214,9 @@ class ConnectorDirect(ConnectBase):
 
 class AcceptorDirect(ConnectBase):
 
-    def __init__(self, *args, **kwargs):
-        ConnectBase.__init__(self, *args, **kwargs)
+    def __init__(self, use_acm, **kwargs):
+        ConnectBase.__init__(self, **kwargs)
+        self.use_acm = use_acm
         self.listening_port = None
         self.transport_event = None
         self.local_uri = None
@@ -234,7 +235,7 @@ class AcceptorDirect(ConnectBase):
             local_uri = self.generate_local_uri()
         self.transport_event = coros.event()
         local_uri.host = gethostbyname(local_uri.host)
-        factory = SpawnFactory(self.transport_event, MSRPTransport, local_uri, logger=self.logger)
+        factory = SpawnFactory(self.transport_event, MSRPTransport, local_uri, logger=self.logger, use_acm=self.use_acm)
         self.listening_port = self._listen(local_uri, factory)
         self.local_uri = local_uri
         return [local_uri]
@@ -364,9 +365,9 @@ def get_connector(relay, **kwargs):
         return ConnectorDirect(**kwargs)
     return ConnectorRelay(relay, **kwargs)
 
-def get_acceptor(relay, **kwargs):
+def get_acceptor(relay, use_acm=False, **kwargs):
     if relay is None:
-        return AcceptorDirect(**kwargs)
+        return AcceptorDirect(use_acm, **kwargs)
     return AcceptorRelay(relay, **kwargs)
 
 
