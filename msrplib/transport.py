@@ -344,7 +344,7 @@ class MSRPTransport(GreenTransportBase):
         FromPath = list(FromPath.decoded)
         ExpectedTo = [self.local_uri]
         ExpectedFrom = self.local_path + self.remote_path + [self.remote_uri]
-        if ToPath!=ExpectedTo or FromPath!=ExpectedFrom:
+        if ToPath != ExpectedTo:
             log.error('To-Path: expected %r, got %r' % (ExpectedTo, ToPath))
             return MSRPNoSuchSessionError('Invalid To-Path')
         if FromPath != ExpectedFrom:
