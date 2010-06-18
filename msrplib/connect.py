@@ -149,9 +149,9 @@ class ConnectBase(object):
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
 
-    def _connect(self, local_uri, remote_uri):
+    def _connect(self, local_uri, remote_uri, use_acm=False):
         self.logger.info('Connecting to %s' % (remote_uri, ))
-        creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger)
+        creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger, use_acm=use_acm)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
@@ -184,6 +184,10 @@ class ConnectorDirect(ConnectBase):
 
     BOGUS_LOCAL_PORT = 12345
 
+    def __init__(self, use_acm, **kwargs):
+        ConnectBase.__init__(self, **kwargs)
+        self.use_acm = use_acm
+
     def __repr__(self):
         return '<%s at %s local_uri=%s>' % (type(self).__name__, hex(id(self)), getattr(self, 'local_uri', '(none)'))
 
@@ -200,7 +204,7 @@ class ConnectorDirect(ConnectBase):
 
     def complete(self, full_remote_path):
         with MSRPConnectTimeout.timeout():
-            msrp = self._connect(self.local_uri, full_remote_path[0])
+            msrp = self._connect(self.local_uri, full_remote_path[0], self.use_acm)
             # can't do the following, because local_uri was already used in the INVITE
             #msrp.local_uri.port = msrp.getHost().port
         try:
@@ -360,9 +364,9 @@ class AcceptorRelay(RelayConnectBase):
         finally:
             self.msrp = None
 
-def get_connector(relay, **kwargs):
+def get_connector(relay, use_acm=False, **kwargs):
     if relay is None:
-        return ConnectorDirect(**kwargs)
+        return ConnectorDirect(use_acm, **kwargs)
     return ConnectorRelay(relay, **kwargs)
 
 def get_acceptor(relay, use_acm=False, **kwargs):

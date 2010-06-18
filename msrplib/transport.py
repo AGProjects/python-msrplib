@@ -290,6 +290,11 @@ class MSRPTransport(GreenTransportBase):
         self.write_chunk(chunk)
         response = self.read_chunk()
         if response.code != 200:
+            if self.use_acm and response.code is None:
+                # With some ACM implementarios both parties may think they are active,
+                # so they will both send an emty SEND request but not get a proper response
+                # back. -Saul
+                return
             self.loseConnection(wait=False)
             raise MSRPNoSuchSessionError('Cannot bind session: %s' % response)
 
@@ -350,11 +355,14 @@ class MSRPTransport(GreenTransportBase):
             if ToPath[0].session_id != ExpectedTo[0].session_id:
                 log.error('To-Path: expected session_id %s, got %s' % (ExpectedTo[0].session_id, ToPath[0].session_id))
                 return MSRPNoSuchSessionError('Invalid To-Path')
+            if FromPath[0].session_id != ExpectedFrom[0].session_id:
+                log.error('From-Path: expected session_id %s, got %s' % (ExpectedFrom[0].session_id, FromPath[0].session_id))
+                return MSRPNoSuchSessionError('Invalid From-Path')
         else:
             if ToPath != ExpectedTo:
                 log.error('To-Path: expected %r, got %r' % (ExpectedTo, ToPath))
                 return MSRPNoSuchSessionError('Invalid To-Path')
-        if FromPath != ExpectedFrom:
-            log.error('From-Path: expected %r, got %r' % (ExpectedFrom, FromPath))
-            return MSRPNoSuchSessionError('Invalid From-Path')
+            if FromPath != ExpectedFrom:
+                log.error('From-Path: expected %r, got %r' % (ExpectedFrom, FromPath))
+                return MSRPNoSuchSessionError('Invalid From-Path')
 
