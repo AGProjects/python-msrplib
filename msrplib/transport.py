@@ -291,8 +291,8 @@ class MSRPTransport(GreenTransportBase):
         response = self.read_chunk()
         if response.code != 200:
             if self.use_acm and response.code is None:
-                # With some ACM implementarios both parties may think they are active,
-                # so they will both send an emty SEND request but not get a proper response
+                # With some ACM implementations both parties may think they are active,
+                # so they will both send an empty SEND request but not get a proper response
                 # back. -Saul
                 return
             self.loseConnection(wait=False)
