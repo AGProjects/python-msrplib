@@ -46,11 +46,11 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
     _new_chunk = False
 
     def rawDataReceived(self, data):
-        self._recepient.logger.report_in(data, self.transport)
+        self._recipient.logger.report_in(data, self.transport)
         protocol.MSRPProtocol.rawDataReceived(self, data)
 
     def lineReceived(self, line):
-        self._recepient.logger.report_in(line+self.delimiter, self.transport, self._new_chunk)
+        self._recipient.logger.report_in(line+self.delimiter, self.transport, self._new_chunk)
         self._new_chunk = False
         protocol.MSRPProtocol.lineReceived(self, line)
 
@@ -58,12 +58,12 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
         msg = 'Closed connection to %s:%s' % (self.transport.getPeer().host, self.transport.getPeer().port)
         if not isinstance(reason.value, ConnectionDone):
             msg += ' (%s)' % reason.getErrorMessage()
-        self._recepient.logger.info(msg)
+        self._recipient.logger.info(msg)
         protocol.MSRPProtocol.connectionLost(self, reason)
 
     def setLineMode(self, extra):
         self._new_chunk = True
-        self._recepient.logger.report_in('', self.transport, packet_done=True)
+        self._recipient.logger.report_in('', self.transport, packet_done=True)
         return protocol.MSRPProtocol.setLineMode(self, extra)
 
 

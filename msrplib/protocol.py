@@ -434,7 +434,7 @@ class MSRPProtocol(LineReceiver):
 
     def __init__(self, recepient):
         self._chunk_header = ''
-        self._recepient = recepient
+        self._recipient = recepient
         self._reset()
         self.term_buf = ''
         self.term_re = None
@@ -446,7 +446,7 @@ class MSRPProtocol(LineReceiver):
         self.line_count = 0
 
     def connectionMade(self):
-        self._recepient._got_transport(self.transport)
+        self._recipient._got_transport(self.transport)
 
     def lineReceived(self, line):
         if self.data:
@@ -458,17 +458,17 @@ class MSRPProtocol(LineReceiver):
                 self.term_substrings = [terminator[:i] for i in xrange(1, len(terminator)+1)] + [terminator+cont[:i] for cont in continue_flags for i in xrange(1, len(cont))]
                 self.term_substrings.reverse()
 
-                self._recepient.logger.received_new_chunk(self._chunk_header+self.delimiter, self.transport, chunk=self.data)
-                self._recepient._data_start(self.data)
+                self._recipient.logger.received_new_chunk(self._chunk_header+self.delimiter, self.transport, chunk=self.data)
+                self._recipient._data_start(self.data)
                 self.setRawMode()
             else:
                 match = self.term_re.match(line)
                 if match:
                     continuation = match.group(1)
-                    self._recepient.logger.received_new_chunk(self._chunk_header, self.transport, chunk=self.data)
-                    self._recepient.logger.received_chunk_end(line+self.delimiter, self.transport, transaction_id=self.data.transaction_id)
-                    self._recepient._data_start(self.data)
-                    self._recepient._data_end(continuation)
+                    self._recipient.logger.received_new_chunk(self._chunk_header, self.transport, chunk=self.data)
+                    self._recipient.logger.received_chunk_end(line+self.delimiter, self.transport, transaction_id=self.data.transaction_id)
+                    self._recipient._data_start(self.data)
+                    self._recipient._data_end(continuation)
                     self._reset()
                     # This line is only here because it allows the subclass MSRPPRotocol_withLogging
                     # to know that the packet ended. In need of redesign. -Luci
@@ -477,7 +477,7 @@ class MSRPProtocol(LineReceiver):
                     self._chunk_header += line+self.delimiter
                     self.line_count += 1
                     if self.line_count > self.MAX_LINES:
-                        self._recepient.logger.received_illegal_data(self._chunk_header, self.transport)
+                        self._recipient.logger.received_illegal_data(self._chunk_header, self.transport)
                         self._reset()
                         return
                     try:
@@ -490,10 +490,10 @@ class MSRPProtocol(LineReceiver):
             try:
                 msrp, transaction_id, rest = line.split(" ", 2)
             except ValueError:
-                self._recepient.logger.received_illegal_data(line+self.delimiter, self.transport)
+                self._recipient.logger.received_illegal_data(line+self.delimiter, self.transport)
                 return # drop connection?
             if msrp != "MSRP":
-                self._recepient.logger.received_illegal_data(line+self.delimiter, self.transport)
+                self._recipient.logger.received_illegal_data(line+self.delimiter, self.transport)
                 return # drop connection?
             method, code, comment = None, None, None
             rest_sp = rest.split(" ", 1)
@@ -519,10 +519,10 @@ class MSRPProtocol(LineReceiver):
         if match: # we got the last data for this message
             contents, continuation, extra = match.groups()
             if contents:
-                self._recepient.logger.received_chunk_data(contents, self.transport, transaction_id=self.data.transaction_id)
-                self._recepient._data_write(contents, final=True)
-            self._recepient.logger.received_chunk_end('\r\n-------%s%s\r\n' % (self.data.transaction_id, continuation), self.transport, transaction_id=self.data.transaction_id)
-            self._recepient._data_end(continuation)
+                self._recipient.logger.received_chunk_data(contents, self.transport, transaction_id=self.data.transaction_id)
+                self._recipient._data_write(contents, final=True)
+            self._recipient.logger.received_chunk_end('\r\n-------%s%s\r\n' % (self.data.transaction_id, continuation), self.transport, transaction_id=self.data.transaction_id)
+            self._recipient._data_end(continuation)
             self._reset()
             self.setLineMode(extra)
         else:
@@ -533,11 +533,11 @@ class MSRPProtocol(LineReceiver):
                     break
             else:
                 self.term_buf = ''
-            self._recepient.logger.received_chunk_data(data, self.transport, transaction_id=self.data.transaction_id)
-            self._recepient._data_write(data, final=False)
+            self._recipient.logger.received_chunk_data(data, self.transport, transaction_id=self.data.transaction_id)
+            self._recipient._data_write(data, final=False)
 
     def connectionLost(self, reason):
-        self._recepient._connectionLost(reason)
+        self._recipient._connectionLost(reason)
 
 
 _re_uri = re.compile("^(?P<scheme>.*?)://(((?P<user>.*?)@)?(?P<host>.*?)(:(?P<port>[0-9]+?))?)(/(?P<session_id>.*?))?;(?P<transport>.*?)(;(?P<parameters>.*))?$")
