@@ -1,4 +1,5 @@
- * Capture DNS lookups related to MSRP relay reservation.
- * Allow multiple relays to be specified (for fallback) when making an MSRP
++ Add keepalive by sending empty SEND every 60 seconds
+- Capture DNS lookups related to MSRP relay reservation
+- Allow multiple relays to be specified (for fallback) when making an MSRP
    connection.
- * Make timeouts configurable.
+- Make timeouts configurable
