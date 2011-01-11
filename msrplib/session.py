@@ -6,6 +6,7 @@ import random
 import traceback
 from time import time
 from twisted.internet.error import ConnectionClosed, ConnectionDone
+from twisted.internet.task import LoopingCall
 from twisted.python.failure import Failure
 from gnutls.errors import GNUTLSError
 from eventlet import api, coros, proc
@@ -79,6 +80,7 @@ class MSRPSession(object):
 
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
+    KEEPALIVE_INTERVAL = 60
 
     # when sending a file, a chunk of this size will be read and sent uninterruptibly
     FILE_PIECE_SIZE = 1024*64
@@ -100,6 +102,8 @@ class MSRPSession(object):
         # with direct write() since writer is dead)
         self.reader_job.link(self.writer_job)
         self.last_expected_response = 0
+        self.keepalive = LoopingCall(self._send_keepalive)
+        self.keepalive.start(self.KEEPALIVE_INTERVAL, False)
         if not callable(self._on_incoming_cb):
             raise TypeError('on_incoming_cb must be callable: %r' % (self._on_incoming_cb, ))
 
@@ -122,10 +126,25 @@ class MSRPSession(object):
     def shutdown(self, wait=True):
         """Send the messages already in queue then close the connection"""
         self.set_state('FLUSHING')
+        if self.keepalive.running:
+            self.keepalive.stop()
         self.outgoing.send(None)
         if wait:
             self.writer_job.wait(None, None)
             self.reader_job.wait(None, None)
+
+    def _spawn_keepalive(self):
+        try:
+            chunk = self.msrp.make_chunk()
+            response = self.deliver_chunk(chunk)
+        except MSRPTransactionError, e:
+            if e.code == 408:
+                self.msrp.loseConnection(wait=False)                                                                                                                                         
+                self.set_state('CLOSING')
+
+    def _send_keepalive(self):
+        if self.state == 'CONNECTED':
+            proc.spawn(self._spawn_keepalive)
 
     def _handle_incoming_response(self, chunk):
         try:
@@ -142,10 +161,11 @@ class MSRPSession(object):
             error = self.msrp.check_incoming_SEND_chunk(chunk)
             if error is not None:
                 return error
-            if chunk.headers.get('Content-Type') is None:
-                return MSRPBadContentType('Content-type header missing')
-            if not contains_mime_type(self.accept_types, chunk.headers['Content-Type'].decoded):
-               return MSRPBadContentType
+            if chunk.data:
+                if chunk.headers.get('Content-Type') is None:
+                    return MSRPBadContentType('Content-type header missing')
+                if not contains_mime_type(self.accept_types, chunk.headers['Content-Type'].decoded):
+                    return MSRPBadContentType
 
     def _handle_incoming_SEND(self, chunk):
         error = self._check_incoming_SEND(chunk)
