@@ -1,3 +1,11 @@
+python-msrplib (0.12.1) unstable; urgency=low
+
+  * Added debian source format file
+  * Bumped debian standards to version 3.9.1
+  * Implemented MSRP keepalives using an empty SEND request
+
+ -- Saul Ibarra <saul@ag-projects.com>  Mon, 24 Jan 2011 23:23:16 +0100
+
 python-msrplib (0.12.0) unstable; urgency=low
 
   * Fixed build dependency
