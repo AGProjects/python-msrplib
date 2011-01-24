@@ -1,4 +1,4 @@
-# Copyright (C) 2008 AG Projects. See LICENSE for details 
+# Copyright (C) 2008-2011 AG Projects. See LICENSE for details 
 
 from hashlib import md5
 from time import time
