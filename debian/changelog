@@ -1,3 +1,11 @@
+python-msrplib (0.13.0) unstable; urgency=low
+
+  * Fixed case when both ends are active due to ACM
+  * Added missing methods to Logger class
+  * Refactored external API and ACM/sessmatch support
+
+ -- Saul Ibarra <saul@ag-projects.com>  Tue, 03 May 2011 17:52:47 +0200
+
 python-msrplib (0.12.1) unstable; urgency=low
 
   * Added debian source format file
