@@ -146,6 +146,15 @@ class Logger(object):
     def received_chunk_end(self, data, transport, transaction_id):
         pass
 
+    def sent_new_chunk(self, data, transport, chunk):
+        pass
+
+    def sent_chunk_data(self, data, transport, transaction_id):
+        pass
+
+    def sent_chunk_end(self, data, transport, transaction_id):
+        pass
+
 
 class FileWithTell(object):
 
