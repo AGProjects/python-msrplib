@@ -288,15 +288,22 @@ class MSRPTransport(GreenTransportBase):
         self._set_full_remote_path(full_remote_path)
         chunk = self.make_chunk()
         self.write_chunk(chunk)
-        response = self.read_chunk()
-        if response.code != 200:
-            if self.use_acm and response.code is None:
-                # With some ACM implementations both parties may think they are active,
-                # so they will both send an empty SEND request but not get a proper response
-                # back. -Saul
-                return
-            self.loseConnection(wait=False)
-            raise MSRPNoSuchSessionError('Cannot bind session: %s' % response)
+        # With some ACM implementations both parties may think they are active,
+        # so they will both send an empty SEND request. -Saul
+        while True:
+            chunk = self.read_chunk()
+            if chunk.code is None:
+                # This was not a response, it was a request
+                if chunk.method == 'SEND' and not chunk.data:
+                    self.write_response(chunk, 200, 'OK')
+                else:
+                    self.loseConnection(wait=False)
+                    raise MSRPNoSuchSessionError('Chunk received while binding session: %s' % chunk)
+            elif chunk.code != 200:
+                self.loseConnection(wait=False)
+                raise MSRPNoSuchSessionError('Cannot bind session: %s' % chunk)
+            else:
+                break
 
     def write_response(self, chunk, code, comment, wait=True):
         """Generate and write the response, lose the connection in case of error"""
