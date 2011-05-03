@@ -113,7 +113,7 @@ def make_response(chunk, code, comment):
 class MSRPTransport(GreenTransportBase):
     protocol_class = MSRPProtocol_withLogging
 
-    def __init__(self, local_uri, logger, use_acm=False):
+    def __init__(self, local_uri, logger, use_sessmatch=False):
         GreenTransportBase.__init__(self)
         if local_uri is not None and not isinstance(local_uri, protocol.URI):
             raise TypeError('Not MSRP URI instance: %r' % (local_uri, ))
@@ -131,7 +131,7 @@ class MSRPTransport(GreenTransportBase):
         self.local_path = []
         self.remote_uri = None
         self.remote_path = []
-        self.use_acm = use_acm
+        self.use_sessmatch = use_sessmatch
         self._msrpdata = None
 
     def next_host(self):
@@ -357,8 +357,8 @@ class MSRPTransport(GreenTransportBase):
         FromPath = list(FromPath.decoded)
         ExpectedTo = [self.local_uri]
         ExpectedFrom = self.local_path + self.remote_path + [self.remote_uri]
-        # Match only session ID when use_acm is set (http://tools.ietf.org/html/draft-ietf-simple-msrp-sessmatch-05)
-        if self.use_acm:
+        # Match only session ID when use_sessmatch is set (http://tools.ietf.org/html/draft-ietf-simple-msrp-sessmatch-10)
+        if self.use_sessmatch:
             if ToPath[0].session_id != ExpectedTo[0].session_id:
                 log.error('To-Path: expected session_id %s, got %s' % (ExpectedTo[0].session_id, ToPath[0].session_id))
                 return MSRPNoSuchSessionError('Invalid To-Path')

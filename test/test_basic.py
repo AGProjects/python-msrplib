@@ -21,7 +21,7 @@ from eventlet import api
 from eventlet.coros import event
 from eventlet import proc
 
-from msrplib.connect import get_connector, get_acceptor, MSRPRelaySettings, ConnectBase, MSRPServer
+from msrplib.connect import DirectConnector, DirectAcceptor, RelayConnection, MSRPRelaySettings, ConnectBase, MSRPServer
 from msrplib import protocol as pr
 from msrplib.trafficlog import TrafficLogger, Logger, hook_std_output
 from msrplib.transport import MSRPTransport
@@ -80,10 +80,16 @@ class TestBase(unittest.TestCase):
         return pr.URI(port=0, use_tls=self.use_tls, credentials=self.server_credentials)
 
     def get_connector(self):
-        return get_connector(relay=self.client_relay, logger=self.client_logger)
+        if self.client_relay is not None:
+            return RelayConnection(self.client_relay, 'active', logger=self.client_logger)
+        else:
+            return DirectConnector(logger=self.client_logger)
 
     def get_acceptor(self):
-        return get_acceptor(relay=self.server_relay, logger=self.server_logger)
+        if self.server_relay is not None:
+            return RelayConnection(self.server_relay, 'passive', logger=self.client_logger)
+        else:
+            return DirectAcceptor(logger=self.server_logger)
 
     def setup_two_endpoints(self):
         server_path = TimeoutEvent()

@@ -2,19 +2,17 @@
 """Establish MSRP connection.
 
 This module provides means to obtain a connected and bound MSRPTransport
-instance. It uniformly handles 4 different configurations you may find your
+instance. It uniformly handles 3 different configurations you may find your
 client engaged in:
 
-    1. Calling endpoint, not using a relay (ConnectorDirect)
-    2. Answering endpoint, not using a relay (AcceptorDirect)
-    3. Calling endpoint, using a relay (ConnectorRelay)
-    4. Answering endpoint, using a relay (AcceptorRelay)
+    1. Calling endpoint, not using a relay (DirectConnector)
+    2. Answering endpoint, not using a relay (DirectAcceptor)
+    3. Endpoint using a relay (RelayConnection)
 
 The answering endpoint may skip using the relay if sure that it's accessible
 directly. The calling endpoint is unlikely to need the relay.
 
-Once you have an instance of the right class (use the convenience functions
-get_connector() and get_acceptor() to get one), the procedure to establish the
+Once you have an instance of the right class, the procedure to establish the
 connection is the same:
 
     full_local_path = connector.prepare()
@@ -65,8 +63,9 @@ __all__ = ['MSRPRelaySettings',
            'MSRPRelayAuthError',
            'MSRPAuthTimeout',
            'MSRPServer',
-           'get_connector',
-           'get_acceptor']
+           'DirectConnector',
+           'DirectAcceptor',
+           'RelayConnection']
 
 class MSRPRelaySettings(protocol.ConnectInfo):
     use_tls = True
@@ -143,15 +142,16 @@ class MSRPSRVConnector(SRVConnector):
 class ConnectBase(object):
     SRVConnectorClass = MSRPSRVConnector
 
-    def __init__(self, logger=None):
-        self.logger = logger or Null()
+    def __init__(self, logger=Null, use_sessmatch=False):
+        self.logger = logger
+        self.use_sessmatch = use_sessmatch
 
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
 
-    def _connect(self, local_uri, remote_uri, use_acm=False):
+    def _connect(self, local_uri, remote_uri):
         self.logger.info('Connecting to %s' % (remote_uri, ))
-        creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger, use_acm=use_acm)
+        creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
         connectFuncName = 'connect' + remote_uri.protocol_name
         connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
@@ -180,13 +180,9 @@ class ConnectBase(object):
         pass
 
 
-class ConnectorDirect(ConnectBase):
+class DirectConnector(ConnectBase):
 
     BOGUS_LOCAL_PORT = 12345
-
-    def __init__(self, use_acm, **kwargs):
-        ConnectBase.__init__(self, **kwargs)
-        self.use_acm = use_acm
 
     def __repr__(self):
         return '<%s at %s local_uri=%s>' % (type(self).__name__, hex(id(self)), getattr(self, 'local_uri', '(none)'))
@@ -204,7 +200,7 @@ class ConnectorDirect(ConnectBase):
 
     def complete(self, full_remote_path):
         with MSRPConnectTimeout.timeout():
-            msrp = self._connect(self.local_uri, full_remote_path[0], self.use_acm)
+            msrp = self._connect(self.local_uri, full_remote_path[0])
             # can't do the following, because local_uri was already used in the INVITE
             #msrp.local_uri.port = msrp.getHost().port
         try:
@@ -216,11 +212,10 @@ class ConnectorDirect(ConnectBase):
         return msrp
 
 
-class AcceptorDirect(ConnectBase):
+class DirectAcceptor(ConnectBase):
 
-    def __init__(self, use_acm, **kwargs):
-        ConnectBase.__init__(self, **kwargs)
-        self.use_acm = use_acm
+    def __init__(self, logger=Null, use_sessmatch=False):
+        ConnectBase.__init__(self, logger, use_sessmatch)
         self.listening_port = None
         self.transport_event = None
         self.local_uri = None
@@ -239,7 +234,7 @@ class AcceptorDirect(ConnectBase):
             local_uri = self.generate_local_uri()
         self.transport_event = coros.event()
         local_uri.host = gethostbyname(local_uri.host)
-        factory = SpawnFactory(self.transport_event, MSRPTransport, local_uri, logger=self.logger, use_acm=self.use_acm)
+        factory = SpawnFactory(self.transport_event, MSRPTransport, local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
         self.listening_port = self._listen(local_uri, factory)
         self.local_uri = local_uri
         return [local_uri]
@@ -285,10 +280,13 @@ def _deliver_chunk(msrp, chunk):
     return response
 
 
-class RelayConnectBase(ConnectBase):
+class RelayConnection(ConnectBase):
 
-    def __init__(self, relay, **kwargs):
-        ConnectBase.__init__(self, **kwargs)
+    def __init__(self, relay, mode, logger=Null, use_sessmatch=False):
+        if mode not in ('active', 'passive'):
+            raise ValueError("RelayConnection mode should be one of 'active' or 'passive'")
+        ConnectBase.__init__(self, logger, use_sessmatch)
+        self.mode = mode
         self.relay = relay
         self.msrp = None
 
@@ -338,41 +336,19 @@ class RelayConnectBase(ConnectBase):
             self.msrp.loseConnection(wait=wait)
             self.msrp = None
 
-class ConnectorRelay(RelayConnectBase):
-
     def complete(self, full_remote_path):
         try:
             with MSRPBindSessionTimeout.timeout():
-                self.msrp.bind(full_remote_path)
+                if self.mode == 'active':
+                    self.msrp.bind(full_remote_path)
+                else:
+                    self.msrp.accept_binding(full_remote_path)
             return self.msrp
         except:
             self.msrp.loseConnection(wait=False)
             raise
         finally:
             self.msrp = None
-
-class AcceptorRelay(RelayConnectBase):
-
-    def complete(self, full_remote_path):
-        try:
-            with MSRPBindSessionTimeout.timeout():
-                self.msrp.accept_binding(full_remote_path)
-            return self.msrp
-        except:
-            self.msrp.loseConnection(wait=False)
-            raise
-        finally:
-            self.msrp = None
-
-def get_connector(relay, use_acm=False, **kwargs):
-    if relay is None:
-        return ConnectorDirect(use_acm, **kwargs)
-    return ConnectorRelay(relay, **kwargs)
-
-def get_acceptor(relay, use_acm=False, **kwargs):
-    if relay is None:
-        return AcceptorDirect(use_acm, **kwargs)
-    return AcceptorRelay(relay, **kwargs)
 
 
 class Notifier(coros.event):
