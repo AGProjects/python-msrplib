@@ -6,7 +6,6 @@ import random
 import traceback
 from time import time
 from twisted.internet.error import ConnectionClosed, ConnectionDone
-from twisted.internet.task import LoopingCall
 from twisted.python.failure import Failure
 from gnutls.errors import GNUTLSError
 from eventlet import api, coros, proc
@@ -102,8 +101,7 @@ class MSRPSession(object):
         # with direct write() since writer is dead)
         self.reader_job.link(self.writer_job)
         self.last_expected_response = 0
-        self.keepalive = LoopingCall(self._send_keepalive)
-        self.keepalive.start(self.KEEPALIVE_INTERVAL, False)
+        self.keepalive_proc = proc.spawn(self._keepalive)
         if not callable(self._on_incoming_cb):
             raise TypeError('on_incoming_cb must be callable: %r' % (self._on_incoming_cb, ))
 
@@ -126,26 +124,26 @@ class MSRPSession(object):
     def shutdown(self, wait=True):
         """Send the messages already in queue then close the connection"""
         self.set_state('FLUSHING')
-        if self.keepalive.running:
-            self.keepalive.stop()
-        self.keepalive = None
+        self.keepalive_proc.kill()
+        self.keepalive_proc = None
         self.outgoing.send(None)
         if wait:
             self.writer_job.wait(None, None)
             self.reader_job.wait(None, None)
 
-    def _spawn_keepalive(self):
-        try:
-            chunk = self.msrp.make_chunk()
-            response = self.deliver_chunk(chunk)
-        except MSRPTransactionError, e:
-            if e.code == 408:
-                self.msrp.loseConnection(wait=False)                                                                                                                                         
-                self.set_state('CLOSING')
-
-    def _send_keepalive(self):
-        if self.state == 'CONNECTED':
-            proc.spawn(self._spawn_keepalive)
+    def _keepalive(self):
+        while True:
+            if not self.connected:
+                return
+            try:
+                chunk = self.msrp.make_chunk()
+                response = self.deliver_chunk(chunk)
+            except MSRPTransactionError, e:
+                if e.code == 408:
+                    self.msrp.loseConnection(wait=False)
+                    self.set_state('CLOSING')
+            else:
+                api.sleep(self.KEEPALIVE_INTERVAL)
 
     def _handle_incoming_response(self, chunk):
         try:
