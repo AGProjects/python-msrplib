@@ -128,6 +128,7 @@ class MSRPSession(object):
         self.set_state('FLUSHING')
         if self.keepalive.running:
             self.keepalive.stop()
+        self.keepalive = None
         self.outgoing.send(None)
         if wait:
             self.writer_job.wait(None, None)
