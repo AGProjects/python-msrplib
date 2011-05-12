@@ -13,7 +13,7 @@ from eventlet.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import make_report, make_response, MSRPTransactionError
-from msrplib.protocol import StatusHeader, ContentTypeHeader, ByteRangeHeader
+from msrplib.protocol import ContentTypeHeader
 
 ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
 
