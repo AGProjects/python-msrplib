@@ -5,7 +5,7 @@ import re
 import random
 
 from twisted.protocols.basic import LineReceiver
-from application.system import default_host_ip
+from application.system import host as host_module
 
 
 class MSRPError(Exception):
@@ -604,12 +604,11 @@ class ConnectInfo(object):
 
 # use TLS_URI and TCP_URI ?
 class URI(ConnectInfo):
-    host = default_host_ip
 
     def __init__(self, host=None, use_tls=None, user=None, port=None,
                  session_id=None, transport="tcp", parameters=None,
                  credentials=None):
-        ConnectInfo.__init__(self, host, use_tls=use_tls, port=port, credentials=credentials)
+        ConnectInfo.__init__(self, host or host_module.default_ip, use_tls=use_tls, port=port, credentials=credentials)
         self.user = user
         if session_id is None:
             session_id = '%x' % random.getrandbits(80)

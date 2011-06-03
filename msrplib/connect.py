@@ -40,11 +40,13 @@ can be used multiple times.
 """
 
 from __future__ import with_statement
+
 import random
+
 from twisted.internet.address import IPv4Address
 from twisted.names.srvconnect import SRVConnector
-from application.python.util import Null
-from application.system import default_host_ip
+from application.python import Null
+from application.system import host
 from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlet import coros
 from eventlet.api import timeout, sleep
@@ -184,6 +186,10 @@ class DirectConnector(ConnectBase):
 
     BOGUS_LOCAL_PORT = 12345
 
+    def __init__(self, logger=Null, use_sessmatch=False):
+        ConnectBase.__init__(self, logger, use_sessmatch)
+        self.host_ip = host.default_ip
+
     def __repr__(self):
         return '<%s at %s local_uri=%s>' % (type(self).__name__, hex(id(self)), getattr(self, 'local_uri', '(none)'))
 
@@ -196,7 +202,7 @@ class DirectConnector(ConnectBase):
         return [self.local_uri]
 
     def getHost(self):
-        return IPv4Address('TCP', default_host_ip, 0)
+        return IPv4Address('TCP', self.host_ip, 0)
 
     def complete(self, full_remote_path):
         with MSRPConnectTimeout.timeout():
