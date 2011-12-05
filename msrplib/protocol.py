@@ -432,9 +432,9 @@ class MSRPProtocol(LineReceiver):
     MAX_LENGTH = 16384
     MAX_LINES = 64
 
-    def __init__(self, recepient):
+    def __init__(self, recipient):
         self._chunk_header = ''
-        self._recipient = recepient
+        self._recipient = recipient
         self._reset()
         self.term_buf = ''
         self.term_re = None
