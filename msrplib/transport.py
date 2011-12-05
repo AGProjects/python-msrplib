@@ -46,11 +46,11 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
     _new_chunk = False
 
     def rawDataReceived(self, data):
-        self._recipient.logger.report_in(data, self.transport)
+        self._recipient.logger.report_in(data, self._recipient)
         protocol.MSRPProtocol.rawDataReceived(self, data)
 
     def lineReceived(self, line):
-        self._recipient.logger.report_in(line+self.delimiter, self.transport, self._new_chunk)
+        self._recipient.logger.report_in(line+self.delimiter, self._recipient, self._new_chunk)
         self._new_chunk = False
         protocol.MSRPProtocol.lineReceived(self, line)
 
@@ -63,7 +63,7 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
 
     def setLineMode(self, extra):
         self._new_chunk = True
-        self._recipient.logger.report_in('', self.transport, packet_done=True)
+        self._recipient.logger.report_in('', self._recipient, packet_done=True)
         return protocol.MSRPProtocol.setLineMode(self, extra)
 
 
