@@ -75,7 +75,7 @@ GOT_NEW_FILE = object()
 
 class MSRPSession(object):
     # if incoming chunk is bigger than this, split it (for the reporting purposes)
-    INCOMING_CHUNK_SIZE = 1024*16
+    INCOMING_CHUNK_SIZE = 1024*64
 
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
