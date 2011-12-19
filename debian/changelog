@@ -1,3 +1,10 @@
+python-msrplib (0.14.2) unstable; urgency=low
+
+  * Use MSRPTransport instance with logger when receiving
+  * Increased incoming virtual chunk size to 64k
+
+ -- Saul Ibarra <saul@ag-projects.com>  Mon, 19 Dec 2011 13:09:02 +0100
+
 python-msrplib (0.14.1) unstable; urgency=low
 
   * Adapted to changes in python-application
