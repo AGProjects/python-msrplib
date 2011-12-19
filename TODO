@@ -2,3 +2,4 @@
 - Allow multiple relays to be specified (for fallback) when making an MSRP
    connection.
 - Make timeouts configurable
+- Add bandwidth throttling for file transfers
