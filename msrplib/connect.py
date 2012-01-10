@@ -300,7 +300,11 @@ class RelayConnection(ConnectBase):
         return '<%s at %s relay=%r msrp=%s>' % (type(self).__name__, hex(id(self)), self.relay, self.msrp)
 
     def _relay_connect(self, local_uri):
-        msrp = self._connect(local_uri, self.relay)
+        try:
+            msrp = self._connect(local_uri, self.relay)
+        except Exception:
+            self.logger.info('Could not connect  to relay %s' % self.relay)
+            raise
         try:
             local_uri.port = msrp.getHost().port
             msrpdata = protocol.MSRPData(method="AUTH", transaction_id='%x' % random.getrandbits(64))
@@ -317,9 +321,11 @@ class RelayConnection(ConnectBase):
             if response.code != 200:
                 raise MSRPRelayAuthError(comment=response.comment, code=response.code)
             msrp.set_local_path(list(response.headers["Use-Path"].decoded))
-            msg = 'Reserved session at %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
+            msg = 'Reserved session at relay %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
             self.logger.info(msg)
         except:
+            msg = 'Could not reserve session at relay %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
+            self.logger.info(msg)
             msrp.loseConnection(wait=False)
             raise
         return msrp
