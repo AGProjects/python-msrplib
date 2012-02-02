@@ -154,14 +154,20 @@ class ConnectBase(object):
     def _connect(self, local_uri, remote_uri):
         self.logger.info('Connecting to %s' % (remote_uri, ))
         creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
-        connectFuncName = 'connect' + remote_uri.protocol_name
-        connectFuncArgs = remote_uri.protocolArgs
         if remote_uri.host:
-            args = (remote_uri.host, remote_uri.port or 2855) + connectFuncArgs
-            msrp = getattr(creator, connectFuncName)(*args)
+            if remote_uri.use_tls:
+                msrp = creator.connectTLS(remote_uri.host, remote_uri.port or 2855, local_uri.credentials)
+            else:
+                msrp = creator.connectTCP(remote_uri.host, remote_uri.port or 2855)
         else:
             if not remote_uri.domain:
                 raise ValueError("remote_uri must have either 'host' or 'domain'")
+            if remote_uri.use_tls:
+                connectFuncName = 'connectTLS'
+                connectFuncArgs = (local_uri.credentials,)
+            else:
+                connectFuncName = 'connectTCP'
+                connectFuncArgs = ()
             msrp = creator.connectSRV(remote_uri.scheme, remote_uri.domain,
                                       connectFuncName=connectFuncName,
                                       connectFuncArgs=connectFuncArgs,
@@ -171,9 +177,10 @@ class ConnectBase(object):
 
     def _listen(self, local_uri, factory):
         from twisted.internet import reactor
-        listenFuncName = 'listen' + local_uri.protocol_name
-        listenFuncArgs = (local_uri.port or 0, factory) + local_uri.protocolArgs
-        port = getattr(reactor, listenFuncName)(*listenFuncArgs, **{'interface': local_uri.host})
+        if local_uri.use_tls:
+            port = reactor.listenTLS(local_uri.port or 0, factory, local_uri.credentials, interface=local_uri.host)
+        else:
+            port = reactor.listenTCP(local_uri.port or 0, factory, interface=local_uri.host)
         local_uri.port = port.getHost().port
         self.logger.info('Listening for incoming %s connections on %s:%s' % (local_uri.scheme.upper(), port.getHost().host, port.getHost().port))
         return port

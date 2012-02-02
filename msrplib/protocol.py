@@ -587,19 +587,6 @@ class ConnectInfo(object):
         else:
             return 'msrp'
 
-    @property
-    def protocol_name(self):
-        if self.use_tls:
-            return 'TLS'
-        else:
-            return 'TCP'
-
-    @property
-    def protocolArgs(self):
-        if self.use_tls:
-            return (self.credentials,)
-        return ()
-
 
 # use TLS_URI and TCP_URI ?
 class URI(ConnectInfo):
