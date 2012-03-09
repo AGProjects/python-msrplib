@@ -84,9 +84,10 @@ class MSRPSession(object):
     # when sending a file, a chunk of this size will be read and sent uninterruptibly
     FILE_PIECE_SIZE = 1024*64
 
-    def __init__(self, msrptransport, accept_types=['*'], on_incoming_cb=None):
+    def __init__(self, msrptransport, accept_types=['*'], on_incoming_cb=None, automatic_reports=True):
         self.msrp = msrptransport
         self.accept_types = accept_types
+        self.automatic_reports = automatic_reports
         if on_incoming_cb is not None:
             self._on_incoming_cb = on_incoming_cb
         self.expected_responses = {}
@@ -178,9 +179,10 @@ class MSRPSession(object):
                 self.outgoing.send((response, None))
         if code == 200:
             self._on_incoming_cb(chunk)
-            report = make_report(chunk, 200, 'OK')
-            if report is not None:
-                self.outgoing.send((report, None))
+            if self.automatic_reports:
+                report = make_report(chunk, 200, 'OK')
+                if report is not None:
+                    self.outgoing.send((report, None))
 
     def _reader(self):
         """Wait forever for new chunks. Notify the user about the good ones through self._on_incoming_cb.
@@ -355,6 +357,13 @@ class MSRPSession(object):
             raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
         self.outgoing_files.send(outgoing_file)
         self.outgoing.send(GOT_NEW_FILE) # just to wake up the writer greenlet
+
+    def send_report(self, chunk, code, reason):
+        if chunk.method != 'SEND':
+            raise ValueError('reports may only be sent for SEND chunks')
+        report = make_report(chunk, code, reason)
+        if report is not None:
+            self.outgoing.send((report, None))
 
     def _write_chunk(self, chunk, response_cb=None):
         id = chunk.transaction_id
