@@ -6,12 +6,12 @@ This library implements Message Session Relay Protocol (MSRP). MSRP is
 defined in RFC 4975.  The relay extension that can be used for NAT traversal
 purposes is defined in RFC 4976.
 
-Copyright (c) 2008-2011 AG Projects
+Copyright (c) 2008-2012 AG Projects
 http://ag-projects.com
 
-Authors: Denis Bilenko, Ruud Klaver
+Authors: Denis Bilenko, Ruud Klaver, Saul Ibarra
 
-Home page: http://download.ag-projects.com/MSRP/
+Home page: http://projects.ag-projects.com/projects/msrp/wiki
 
 
 Description
@@ -41,16 +41,9 @@ and security.
 Debian package installation
 ---------------------------
 
-Add the following lines to /etc/apt/sources.list
+Add AG Projects reporistory as describe at:
 
-# AG Projects software
-deb     http://ag-projects.com/debian unstable main
-deb-src http://ag-projects.com/debian unstable main
-
-Install the AG Projects debian software signing key:
-
-wget http://download.ag-projects.com/agp-debian-gpg.key
-apt-key add agp-debian-gpg.key
+http://ag-projects.com/projects-products-96/683-software-repositories
 
 After that, run:
 
@@ -61,7 +54,7 @@ sudo apt-get install python-msrplib
 Manual installation
 -------------------
 
-Download the tar archive from http://download.ag-projects.com/MSRP.
+Download the tar archive from http://download.ag-projects.com/MSRP
 
 Extract the tar archive and run under the newly created directory:
 
