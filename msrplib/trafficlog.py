@@ -2,7 +2,6 @@
 
 import sys
 import datetime
-from application import log
 
 
 class HeaderLogger(object):
