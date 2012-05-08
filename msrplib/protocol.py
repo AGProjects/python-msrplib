@@ -1,4 +1,4 @@
-# Copyright (C) 2008-2011 AG Projects. See LICENSE for details
+# Copyright (C) 2008-2012 AG Projects. See LICENSE for details
 
 from collections import deque
 import re
