@@ -1,3 +1,9 @@
+python-msrplib (0.14.4) unstable; urgency=low
+
+  * Added ability to send REPORT requests manually
+
+ -- Saul Ibarra <saul@ag-projects.com>  Tue, 08 May 2012 16:21:05 +0200
+
 python-msrplib (0.14.3) unstable; urgency=low
 
   * Enhanced logging when connection with relay fails
