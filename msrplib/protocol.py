@@ -307,9 +307,7 @@ class MSRPData(object):
         self.method = method
         self.code = code
         self.comment = comment
-        if headers is None:
-            headers = {}
-        self.headers = headers
+        self.headers = headers or {}
         self.data = data
         self.contflag = contflag
 
