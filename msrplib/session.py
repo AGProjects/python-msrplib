@@ -183,6 +183,9 @@ class MSRPSession(object):
                 if report is not None:
                     self.outgoing.send((report, None))
 
+    def _handle_incoming_REPORT(self, chunk):
+        self._on_incoming_cb(chunk)
+
     def _reader(self):
         """Wait forever for new chunks. Notify the user about the good ones through self._on_incoming_cb.
 
@@ -197,13 +200,13 @@ class MSRPSession(object):
                     chunk = self.msrp.read_chunk(self.INCOMING_CHUNK_SIZE)
                     if chunk.method is None: # response
                         self._handle_incoming_response(chunk)
-                    elif chunk.method=='SEND':
-                        self._handle_incoming_SEND(chunk)
-                    elif chunk.method=='REPORT':
-                        self._on_incoming_cb(chunk)
                     else:
-                        response = make_response(chunk, '501', 'Method unknown')
-                        self.outgoing.send((response, None))
+                        method = getattr(self, '_handle_incoming_%s' % chunk.method, None)
+                        if method is not None:
+                            method(chunk)
+                        else:
+                            response = make_response(chunk, '501', 'Method unknown')
+                            self.outgoing.send((response, None))
             except proc.LinkedExited: # writer has exited
                 pass
             finally:
