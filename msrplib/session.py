@@ -156,7 +156,7 @@ class MSRPSession(object):
             response_cb(chunk)
 
     def _check_incoming_SEND(self, chunk):
-        if chunk.method=='SEND' and chunk.segment is None:
+        if chunk.segment is None:
             error = self.msrp.check_incoming_SEND_chunk(chunk)
             if error is not None:
                 return error
