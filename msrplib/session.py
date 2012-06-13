@@ -88,8 +88,9 @@ class MSRPSession(object):
         self.msrp = msrptransport
         self.accept_types = accept_types
         self.automatic_reports = automatic_reports
-        if on_incoming_cb is not None:
-            self._on_incoming_cb = on_incoming_cb
+        if not callable(on_incoming_cb):
+            raise TypeError('on_incoming_cb must be callable: %r' % on_incoming_cb)
+        self._on_incoming_cb = on_incoming_cb
         self.expected_responses = {}
         self.outgoing = coros.queue()
         self.outgoing_files = coros.queue()
@@ -103,8 +104,6 @@ class MSRPSession(object):
         self.reader_job.link(self.writer_job)
         self.last_expected_response = 0
         self.keepalive_proc = proc.spawn(self._keepalive)
-        if not callable(self._on_incoming_cb):
-            raise TypeError('on_incoming_cb must be callable: %r' % (self._on_incoming_cb, ))
 
     def _get_logger(self):
         return self.msrp.logger
@@ -429,13 +428,13 @@ class MSRPSession(object):
 class GreenMSRPSession(MSRPSession):
 
     def __init__(self, msrptransport, accept_types=['*']):
-        MSRPSession.__init__(self, msrptransport, accept_types)
+        MSRPSession.__init__(self, msrptransport, accept_types, on_incoming_cb=self._incoming_cb)
         self.incoming = ValueQueue()
 
     def receive_chunk(self):
         return self.incoming.wait()
 
-    def _on_incoming_cb(self, value=None, error=None):
+    def _incoming_cb(self, value=None, error=None):
         if error is not None:
             self.incoming.send_exception(error.type, error.value, error.tb)
         else:
