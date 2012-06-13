@@ -5,3 +5,4 @@ __version__ = '%s.%s.%s' % version_info[:3]
 
 class MSRPError(Exception):
     pass
+

@@ -7,9 +7,8 @@ import random
 from twisted.protocols.basic import LineReceiver
 from application.system import host as host_module
 
+from msrplib import MSRPError
 
-class MSRPError(Exception):
-    pass
 
 class ParsingError(MSRPError):
     pass
