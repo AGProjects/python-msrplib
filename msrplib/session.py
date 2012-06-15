@@ -186,6 +186,13 @@ class MSRPSession(object):
     def _handle_incoming_REPORT(self, chunk):
         self._on_incoming_cb(chunk)
 
+    def _handle_incoming_NICKNAME(self, chunk):
+        if 'Use-Nickname' not in chunk.headers or 'Success-Report' in chunk.headers or 'Failure-Report' in chunk.headers:
+            response = make_response(chunk, 400, 'Bad request')
+            self.outgoing.send((response, None))
+            return
+        self._on_incoming_cb(chunk)
+
     def _reader(self):
         """Wait forever for new chunks. Notify the user about the good ones through self._on_incoming_cb.
 

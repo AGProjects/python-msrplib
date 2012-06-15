@@ -294,6 +294,16 @@ class ContentDispositionHeader(MSRPNamedHeader):
         disposition, parameters = decoded
         return ";".join([disposition] + ["%s=%s" % pair for pair in parameters.iteritems()])
 
+class UseNicknameHeader(MSRPNamedHeader):
+    name = "Use-Nickname"
+
+    def _decode(self, encoded):
+        return encoded.decode('utf-8')
+
+    def _encode(self, decoded):
+        return decoded.encode('utf-8')
+
+
 class MSRPData(object):
 
     # for chunks that are generated locally by splitting a big incoming chunk
