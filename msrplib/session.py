@@ -372,7 +372,7 @@ class MSRPSession(object):
             raise ValueError('reports may only be sent for SEND chunks')
         report = make_report(chunk, code, reason)
         if report is not None:
-            self.outgoing.send((report, None))
+            self.send_chunk(report)
 
     def _write_chunk(self, chunk, response_cb=None):
         id = chunk.transaction_id
