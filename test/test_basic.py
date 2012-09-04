@@ -17,9 +17,9 @@ from gnutls.interfaces.twisted import X509Credentials
 
 from application import log
 
-from eventlet import api
-from eventlet.coros import event
-from eventlet import proc
+from eventlib import api
+from eventlib.coros import event
+from eventlib import proc
 
 from msrplib.connect import DirectConnector, DirectAcceptor, RelayConnection, MSRPRelaySettings, ConnectBase, MSRPServer
 from msrplib import protocol as pr

@@ -8,8 +8,8 @@ from time import time
 from twisted.internet.error import ConnectionClosed, ConnectionDone
 from twisted.python.failure import Failure
 from gnutls.errors import GNUTLSError
-from eventlet import api, coros, proc
-from eventlet.twistedutil.protocol import ValueQueue
+from eventlib import api, coros, proc
+from eventlib.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import make_report, make_response, MSRPTransactionError

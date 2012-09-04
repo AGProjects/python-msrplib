@@ -23,13 +23,13 @@ import sys
 import os
 from time import time
 from twisted.internet.error import ConnectionDone
-from eventlet import api, proc
+from eventlib import api, proc
 from msrplib.connect import AcceptorDirect, ConnectorDirect
 from msrplib.protocol import URI
 from msrplib.trafficlog import Logger
 from msrplib.session import MSRPSession, OutgoingFile
 
-from twisted.internet import reactor # let eventlet know we want twisted-based hub
+from twisted.internet import reactor # let eventlib know we want twisted-based hub
 
 # from application import log
 # log.level.current = log.level.DEBUG

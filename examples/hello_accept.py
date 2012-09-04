@@ -2,13 +2,13 @@
 #
 
 import sys
-from eventlet import proc
+from eventlib import proc
 from msrplib.connect import AcceptorDirect
 from msrplib.protocol import URI
 from msrplib.trafficlog import Logger
 from msrplib.session import GreenMSRPSession
 
-from twisted.internet import reactor # let eventlet know we want twisted-based hub
+from twisted.internet import reactor # let eventlib know we want twisted-based hub
 
 local_uri = URI(session_id='server', use_tls=False)
 remote_uri = URI(session_id='client', use_tls=False)

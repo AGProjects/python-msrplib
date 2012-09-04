@@ -3,7 +3,7 @@
 import random
 from application import log
 from twisted.internet.error import ConnectionDone
-from eventlet.twistedutil.protocol import GreenTransportBase
+from eventlib.twistedutil.protocol import GreenTransportBase
 
 from msrplib import protocol, MSRPError
 from msrplib.trafficlog import Logger

@@ -47,10 +47,10 @@ from twisted.internet.address import IPv4Address
 from twisted.names.srvconnect import SRVConnector
 from application.python import Null
 from application.system import host
-from eventlet.twistedutil.protocol import GreenClientCreator, SpawnFactory
-from eventlet import coros
-from eventlet.api import timeout, sleep
-from eventlet.green.socket import gethostbyname
+from eventlib.twistedutil.protocol import GreenClientCreator, SpawnFactory
+from eventlib import coros
+from eventlib.api import timeout, sleep
+from eventlib.green.socket import gethostbyname
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest, MSRPNoSuchSessionError
