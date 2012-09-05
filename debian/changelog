@@ -1,11 +1,12 @@
-python-msrplib (0.15.0) unstable; urgency=low
+python-msrplib (0.15.0) UNRELEASED; urgency=low
 
   * Added support for NICKNAME method
-  * Fixed setting on_incoming_cb callback
   * Made received chunk handling more flexible
+  * Adapted to eventlet package rename
   * Bumped debian standards version to 3.9.3
+  * Raised debian/compat version to 7
 
- -- Saul Ibarra <saul@ag-projects.com>  Fri, 15 Jun 2012 17:56:10 +0200
+ -- Saul Ibarra <saul@ag-projects.com>  Wed, 05 Sep 2012 11:08:44 +0200
 
 python-msrplib (0.14.4) unstable; urgency=low
 
