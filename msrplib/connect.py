@@ -440,7 +440,7 @@ class MSRPServer(ConnectBase):
         msg = 'Incoming connection from %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
         self.logger.info(msg)
         with MSRPBindSessionTimeout.timeout():
-            chunk = msrp.read_chunk(10000)
+            chunk = msrp.read_chunk()
             ToPath = tuple(chunk.headers['To-Path'].decoded)
             if len(ToPath)!=1:
                 msrp.write_response(chunk, 400, 'Invalid To-Path', wait=False)

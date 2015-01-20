@@ -210,24 +210,16 @@ class MSRPTransport(GreenTransportBase):
             self.logger.sent_chunk_data(chunk.data, self, chunk.transaction_id)
         self.logger.sent_chunk_end(footer, self, chunk.transaction_id)
 
-    def read_chunk(self, size=None):
+    def read_chunk(self, max_size=1024*1024*4):
         """Wait for a new chunk and return it.
         If there was an error, close the connection and raise ChunkParseError.
 
         In case of unintelligible input, lose the connection and return None.
         When the connection is closed, raise the reason of the closure (e.g. ConnectionDone).
-
-        If the data already read exceeds `size', stop reading the data and return
-        a "virtual" chunk, i.e. the one that does not actually correspond the the real
-        MSRP chunk. Such chunks have Byte-Range header changed to match the number of
-        bytes read and continuation that is '+'; they also possess 'segment' attribute,
-        an integer, starting with 1 and increasing with every new segment of the chunk.
-
-        Note, that `size' only hints when to interrupt the segment but does not affect
-        how the data is read from socket. You may have segments bigger than `size' and it's
-        legal to set `size' to zero (which would mean return a chunk as long as you get
-        some data, regardless how small)
         """
+
+        assert max_size > 0
+
         if self._msrpdata is None:
             func, msrpdata = self._wait()
             if func!=data_start:
@@ -238,27 +230,12 @@ class MSRPTransport(GreenTransportBase):
             msrpdata = self._msrpdata
         data = msrpdata.data
         func, param = self._wait()
-        while func==data_write:
+        while func == data_write:
             data += param
-            if size is not None and len(data)>=size:
-                if msrpdata.segment is None:
-                    msrpdata.segment = 1
-                else:
-                    msrpdata.segment += 1
-                last_chunk = msrpdata.byte_range[0]+len(data)-1 == msrpdata.byte_range[2]
-                self._msrpdata = msrpdata.copy()
-                msrpdata.data = data
-                msrpdata.contflag = '+' if last_chunk else '$'
-                msrpdata.final = last_chunk
-                fro, to, total = msrpdata.byte_range
-                msrpdata.add_header(protocol.ByteRangeHeader((fro, None, total)))
-                if last_chunk:
-                    self._msrpdata = msrpdata
-                    return self.read_chunk(size)
-                else:
-                    self._msrpdata.add_header(protocol.ByteRangeHeader((fro+msrpdata.size, None, total)))
-                self.logger.debug('read_chunk -> (virtual) %r' % (msrpdata, ))
-                return msrpdata
+            if len(data) > max_size:
+                self.logger.debug('Chunk is too big: %r %s' % (func, repr(param)[:100]))
+                self.loseConnection()
+                raise ChunkParseError
             func, param = self._wait()
         if func == data_final_write:
             data += param

@@ -74,9 +74,6 @@ class OutgoingFile(object):
 GOT_NEW_FILE = object()
 
 class MSRPSession(object):
-    # if incoming chunk is bigger than this, split it (for the reporting purposes)
-    INCOMING_CHUNK_SIZE = 1024*64
-
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
     KEEPALIVE_INTERVAL = 60
@@ -204,7 +201,7 @@ class MSRPSession(object):
             self.writer_job.link(self.reader_job)
             try:
                 while self.state in ['CONNECTED', 'FLUSHING']:
-                    chunk = self.msrp.read_chunk(self.INCOMING_CHUNK_SIZE)
+                    chunk = self.msrp.read_chunk()
                     if chunk.method is None: # response
                         self._handle_incoming_response(chunk)
                     else:
