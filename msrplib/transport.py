@@ -233,7 +233,7 @@ class MSRPTransport(GreenTransportBase):
         while func == data_write:
             data += param
             if len(data) > max_size:
-                self.logger.debug('Chunk is too big: %r %s' % (func, repr(param)[:100]))
+                self.logger.debug('Chunk is too big (max_size=%d bytes)' % max_size)
                 self.loseConnection()
                 raise ChunkParseError
             func, param = self._wait()
