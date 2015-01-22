@@ -1,3 +1,12 @@
+python-msrplib (0.16.0) unstable; urgency=medium
+
+  * Increase timeout to 30 seconds
+  * Don't create virtual chunks for incoming data
+  * Bumped Debian Standards-Version
+  * Drop Python 2.6 support
+
+ -- Saul Ibarra <saul@ag-projects.com>  Thu, 22 Jan 2015 15:52:05 +0100
+
 python-msrplib (0.15.0) unstable; urgency=low
 
   * Added support for NICKNAME method
