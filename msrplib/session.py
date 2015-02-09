@@ -136,12 +136,12 @@ class MSRPSession(object):
             try:
                 chunk = self.msrp.make_chunk()
                 chunk.add_header(MSRPHeader('Keep-Alive', 'yes'))
-                response = self.deliver_chunk(chunk)
+                self.deliver_chunk(chunk)
             except MSRPTransactionError, e:
                 if e.code == 408:
                     self.msrp.loseConnection(wait=False)
                     self.set_state('CLOSING')
-                    break
+                    return
 
     def _handle_incoming_response(self, chunk):
         try:
