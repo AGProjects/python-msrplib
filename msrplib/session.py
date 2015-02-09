@@ -13,7 +13,7 @@ from eventlib.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import make_report, make_response, MSRPTransactionError
-from msrplib.protocol import ContentTypeHeader
+from msrplib.protocol import ContentTypeHeader, MSRPHeader
 
 ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
 
@@ -130,17 +130,18 @@ class MSRPSession(object):
 
     def _keepalive(self):
         while True:
+            api.sleep(self.KEEPALIVE_INTERVAL)
             if not self.connected:
                 return
             try:
                 chunk = self.msrp.make_chunk()
+                chunk.add_header(MSRPHeader('Keep-Alive', 'yes'))
                 response = self.deliver_chunk(chunk)
             except MSRPTransactionError, e:
                 if e.code == 408:
                     self.msrp.loseConnection(wait=False)
                     self.set_state('CLOSING')
-            else:
-                api.sleep(self.KEEPALIVE_INTERVAL)
+                    break
 
     def _handle_incoming_response(self, chunk):
         try:
