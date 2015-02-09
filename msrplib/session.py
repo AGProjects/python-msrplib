@@ -1,9 +1,9 @@
 # Copyright (C) 2008-2012 AG Projects. See LICENSE for details
+#
 
-from __future__ import with_statement
-import sys
 import random
 import traceback
+
 from time import time
 from twisted.internet.error import ConnectionClosed, ConnectionDone
 from twisted.python.failure import Failure
@@ -50,6 +50,14 @@ def contains_mime_type(mimetypelist, mimetype):
     return False
 
 
+class OutgoingChunk(object):
+    __slots__ = ('chunk', 'response_callback')
+
+    def __init__(self,  chunk, response_callback=None):
+        self.chunk = chunk
+        self.response_callback = response_callback
+
+
 class OutgoingFile(object):
 # will not implement support for CPIM here, because it's already complicated
 # instead, use a file wrapper that will concatenate together CPIM header and the actual file
@@ -71,7 +79,6 @@ class OutgoingFile(object):
 
     # TODO: how to cancel/pause file transfer? def cancel(self): ...
 
-GOT_NEW_FILE = object()
 
 class MSRPSession(object):
     RESPONSE_TIMEOUT = 30
@@ -90,7 +97,6 @@ class MSRPSession(object):
         self._on_incoming_cb = on_incoming_cb
         self.expected_responses = {}
         self.outgoing = coros.queue()
-        self.outgoing_files = coros.queue()
         self.reader_job = proc.spawn(self._reader)
         self.writer_job = proc.spawn(self._writer)
         self.state = 'CONNECTED' # -> 'FLUSHING' -> 'CLOSING' -> 'DONE'
@@ -173,13 +179,13 @@ class MSRPSession(object):
         if chunk.final:
             response = make_response(chunk, code, comment)
             if response is not None:
-                self.outgoing.send((response, None))
+                self.outgoing.send(OutgoingChunk(response))
         if code == 200:
             self._on_incoming_cb(chunk)
             if self.automatic_reports:
                 report = make_report(chunk, 200, 'OK')
                 if report is not None:
-                    self.outgoing.send((report, None))
+                    self.outgoing.send(OutgoingChunk(report))
 
     def _handle_incoming_REPORT(self, chunk):
         self._on_incoming_cb(chunk)
@@ -187,7 +193,7 @@ class MSRPSession(object):
     def _handle_incoming_NICKNAME(self, chunk):
         if 'Use-Nickname' not in chunk.headers or 'Success-Report' in chunk.headers or 'Failure-Report' in chunk.headers:
             response = make_response(chunk, 400, 'Bad request')
-            self.outgoing.send((response, None))
+            self.outgoing.send(OutgoingChunk(response))
             return
         self._on_incoming_cb(chunk)
 
@@ -211,7 +217,7 @@ class MSRPSession(object):
                             method(chunk)
                         else:
                             response = make_response(chunk, '501', 'Method unknown')
-                            self.outgoing.send((response, None))
+                            self.outgoing.send(OutgoingChunk(response))
             except proc.LinkedExited: # writer has exited
                 pass
             finally:
@@ -240,8 +246,8 @@ class MSRPSession(object):
         except ConnectionClosedErrors, ex:
             self.logger.debug('reader: exiting because of %r' % ex)
             error=Failure(ex)
-        except:
-            self.logger.debug('reader: losing connection because of %r' % (sys.exc_info(), ))
+        except Exception:
+            self.logger.err('reader: captured unhandled exception\n%r' % traceback.format_exc())
             error=Failure()
             raise
         finally:
@@ -249,85 +255,52 @@ class MSRPSession(object):
             self.msrp.loseConnection(wait=False)
             self.set_state('DONE')
 
-    def _write_file(self):
-        outgoing_file = self.outgoing_files.items[0][0]
-        if outgoing_file.size is None or outgoing_file.position < outgoing_file.size:
-            try:
-                piece = outgoing_file.fileobj.read(self.FILE_PIECE_SIZE)
-            except Exception:
-                self.logger.err('error while reading file %r\n%s' % (outgoing_file, traceback.format_exc()))
-                return
-            self.logger.debug('_write_file: read %s bytes from %s' % (len(piece), outgoing_file))
-            chunk = self.msrp.make_chunk(contflag='X', start=outgoing_file.position+1, end='*', length=outgoing_file.size or '*', message_id=outgoing_file.message_id)
-            chunk.headers.update(outgoing_file.headers)
-            id = chunk.transaction_id
-            assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
-            cb_and_timer = [outgoing_file.on_transaction_response, None]
-            self.expected_responses[id] = cb_and_timer
-            try:
-                trailer = chunk.encode_start()
-                self.msrp.write(trailer)
-                self.logger.sent_new_chunk(trailer, self.msrp, chunk=chunk)
-                self.logger.debug('_write_file: wrote header %r' % chunk)
-                try:
-                    while piece:
-                        self.msrp.write(piece)
-                        self.logger.sent_chunk_data(piece, self.msrp, transaction_id=chunk.transaction_id)
-                        outgoing_file.position += len(piece)
-                        #self.logger.debug('_write_file: wrote %s bytes' % len(piece))
-                        for x in self.outgoing.items:
-                            # stop sending the file if there is something else in the queue other than files
-                            if x is not GOT_NEW_FILE:
-                                return
-                        if outgoing_file.size is None or outgoing_file.position < outgoing_file.size:
-                            try:
-                                piece = outgoing_file.fileobj.read(self.FILE_PIECE_SIZE)
-                            except Exception:
-                                self.logger.err('error while reading file %r\n%s' % (outgoing_file, traceback.format_exc()))
-                                return
-                        else:
-                            break
-                finally:
-                    if not piece or outgoing_file.position == outgoing_file.size:
-                        contflag = '$'
-                        if self.outgoing_files:
-                            self.outgoing_files.wait()
-                    else:
-                        contflag = '+'
-                    footer = chunk.encode_end(contflag)
-                    self.msrp.write(footer)
-                    self.logger.sent_chunk_end(footer, self.msrp, transaction_id=chunk.transaction_id)
-                    self.logger.debug('_write_file: wrote chunk end %s' % contflag)
-            except:
-                self.expected_responses.pop(id, None)
-                raise
-            else:
-                timeout_error = Response408Timeout if chunk.failure_report=='yes' else Response200OK
-                timer = api.get_hub().schedule_call_global(self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
-                self.last_expected_response = time() + self.RESPONSE_TIMEOUT
-                cb_and_timer[1] = timer
-
     def _writer(self):
         try:
-            while self.state=='CONNECTED' or (self.state=='FLUSHING' and self.outgoing and self.outgoing_files):
-                if not self.outgoing and self.outgoing_files:
-                    send_params = GOT_NEW_FILE
-                else:
-                    send_params = self.outgoing.wait()
-                if send_params is None:
+            while self.state=='CONNECTED' or (self.state=='FLUSHING' and self.outgoing):
+                item = self.outgoing.wait()
+                if item is None:
                     break
-                elif send_params is GOT_NEW_FILE and self.outgoing_files:
-                    self._write_file()
+                elif isinstance(item, OutgoingFile):
+                    self._write_file(item)
                 else:
-                    self._write_chunk(*send_params)
-        except ConnectionClosedErrors + (proc.LinkedExited, proc.ProcExit), ex:
-            self.logger.debug('writer: exiting because of %r' % (ex, ))
+                    self._write_chunk(item.chunk, item.response_callback)
+        except ConnectionClosedErrors + (proc.LinkedExited, proc.ProcExit), e:
+            self.logger.debug('writer: exiting because of %r' % e)
         except:
-            self.logger.debug('writer: losing connection because of %r' % (sys.exc_info(), ))
+            self.logger.err('writer: captured unhandled exception:\n%s' % traceback.format_exc())
             raise
         finally:
             self.msrp.loseConnection(wait=False)
             self.set_state('CLOSING')
+
+    def _write_file(self, outgoing_file):
+        while outgoing_file.size is None or outgoing_file.position < outgoing_file.size:
+            data = outgoing_file.fileobj.read(self.FILE_PIECE_SIZE)
+            chunk = self.msrp.make_chunk(data=data, start=outgoing_file.position+1, length=outgoing_file.size, message_id=outgoing_file.message_id)
+            chunk.headers.update(outgoing_file.headers)
+            self._write_chunk(chunk, outgoing_file.on_transaction_response)
+            outgoing_file.position += len(data)
+
+            # give other entries on the queue a chance to run
+            if self.outgoing:
+                self.outgoing.send(outgoing_file)
+                return
+
+    def _write_chunk(self, chunk, response_cb=None):
+        assert chunk.transaction_id not in self.expected_responses, "MSRP transaction %r is already in progress" % chunk.transaction_id
+        self.msrp.write_chunk(chunk)
+        if response_cb is not None:
+            timer = api.get_hub().schedule_call_global(self.RESPONSE_TIMEOUT, self._response_timeout, chunk.transaction_id, Response408Timeout)
+            self.expected_responses[chunk.transaction_id] = (response_cb, timer)
+            self.last_expected_response = time() + self.RESPONSE_TIMEOUT
+
+    def _response_timeout(self, id, timeout_error):
+        response_cb, timer = self.expected_responses.pop(id, (None, None))
+        if response_cb is not None:
+            response_cb(timeout_error)
+            if timer is not None:
+                timer.cancel()
 
     def send_chunk(self, chunk, response_cb=None):
         """Send `chunk'. Report the result via `response_cb'.
@@ -348,22 +321,21 @@ class MSRPSession(object):
 
         If sending is impossible raise MSRPSessionError.
         """
-        assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
+        assert chunk.transaction_id not in self.expected_responses, "MSRP transaction %r is already in progress" % chunk.transaction_id
         if response_cb is not None and not callable(response_cb):
             raise TypeError('response_cb must be callable: %r' % (response_cb, ))
         if self.state != 'CONNECTED':
             raise MSRPSessionError('Cannot send chunk because MSRPSession is %s' % self.state)
         if self.msrp._disconnected_event.ready():
             raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
-        self.outgoing.send((chunk, response_cb))
+        self.outgoing.send(OutgoingChunk(chunk, response_cb))
 
     def send_file(self, outgoing_file):
         if self.state != 'CONNECTED':
             raise MSRPSessionError('Cannot send chunk because MSRPSession is %s' % self.state)
         if self.msrp._disconnected_event.ready():
             raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
-        self.outgoing_files.send(outgoing_file)
-        self.outgoing.send(GOT_NEW_FILE) # just to wake up the writer greenlet
+        self.outgoing.send(outgoing_file)
 
     def send_report(self, chunk, code, reason):
         if chunk.method != 'SEND':
@@ -371,34 +343,6 @@ class MSRPSession(object):
         report = make_report(chunk, code, reason)
         if report is not None:
             self.send_chunk(report)
-
-    def _write_chunk(self, chunk, response_cb=None):
-        id = chunk.transaction_id
-        assert id not in self.expected_responses, "MSRP transaction %r is already in progress" % id
-        if response_cb is not None:
-            # since reader is in another greenlet and write() will switch the greenlets,
-            # let's setup response_cb and timer before write() call, just in case
-            cb_and_timer = [response_cb, None]
-            self.expected_responses[id] = cb_and_timer
-        try:
-            self.msrp.write_chunk(chunk)
-        except:
-            if response_cb is not None:
-                self.expected_responses.pop(id, None)
-            raise
-        else:
-            if response_cb is not None:
-                timeout_error = Response408Timeout if chunk.failure_report=='yes' else Response200OK
-                timer = api.get_hub().schedule_call_global(self.RESPONSE_TIMEOUT, self._response_timeout, id, timeout_error)
-                self.last_expected_response = time() + self.RESPONSE_TIMEOUT
-                cb_and_timer[1] = timer
-
-    def _response_timeout(self, id, timeout_error):
-        response_cb, timer = self.expected_responses.pop(id, (None, None))
-        if response_cb is not None:
-            response_cb(timeout_error)
-            if timer is not None:
-                timer.cancel()
 
     def deliver_chunk(self, chunk, event=None):
         """Send chunk, wait for the transaction response (if Failure-Report header is not 'no').
