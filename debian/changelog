@@ -1,3 +1,10 @@
+python-msrplib (0.16.1) unstable; urgency=medium
+
+  * Simplified file transfer code and fixed chunking of sent files
+  * Don't send keep-alives right from the start
+
+ -- Saul Ibarra <saul@ag-projects.com>  Mon, 09 Feb 2015 15:17:10 +0100
+
 python-msrplib (0.16.0) unstable; urgency=medium
 
   * Increase timeout to 30 seconds
