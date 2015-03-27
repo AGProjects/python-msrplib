@@ -58,35 +58,10 @@ class OutgoingChunk(object):
         self.response_callback = response_callback
 
 
-class OutgoingFile(object):
-# will not implement support for CPIM here, because it's already complicated
-# instead, use a file wrapper that will concatenate together CPIM header and the actual file
-
-    def __init__(self, fileobj, size, content_type=None, position=0, message_id=None):
-        self.fileobj = fileobj
-        self.size = size
-        self.position = position
-        if message_id is None:
-            message_id = '%x' % random.getrandbits(64)
-        self.message_id = message_id
-        self.headers = {}
-        if content_type is not None:
-            self.headers[ContentTypeHeader.name] = ContentTypeHeader(content_type)
-
-    def on_transaction_response(self, chunk):
-        # do something meaningful in case of an error?
-        pass
-
-    # TODO: how to cancel/pause file transfer? def cancel(self): ...
-
-
 class MSRPSession(object):
     RESPONSE_TIMEOUT = 30
     SHUTDOWN_TIMEOUT = 1
     KEEPALIVE_INTERVAL = 60
-
-    # when sending a file, a chunk of this size will be read and sent uninterruptibly
-    FILE_PIECE_SIZE = 1024*64
 
     def __init__(self, msrptransport, accept_types=['*'], on_incoming_cb=None, automatic_reports=True):
         self.msrp = msrptransport
@@ -261,10 +236,7 @@ class MSRPSession(object):
                 item = self.outgoing.wait()
                 if item is None:
                     break
-                elif isinstance(item, OutgoingFile):
-                    self._write_file(item)
-                else:
-                    self._write_chunk(item.chunk, item.response_callback)
+                self._write_chunk(item.chunk, item.response_callback)
         except ConnectionClosedErrors + (proc.LinkedExited, proc.ProcExit), e:
             self.logger.debug('writer: exiting because of %r' % e)
         except:
@@ -273,19 +245,6 @@ class MSRPSession(object):
         finally:
             self.msrp.loseConnection(wait=False)
             self.set_state('CLOSING')
-
-    def _write_file(self, outgoing_file):
-        while outgoing_file.size is None or outgoing_file.position < outgoing_file.size:
-            data = outgoing_file.fileobj.read(self.FILE_PIECE_SIZE)
-            chunk = self.msrp.make_chunk(data=data, start=outgoing_file.position+1, length=outgoing_file.size, message_id=outgoing_file.message_id)
-            chunk.headers.update(outgoing_file.headers)
-            self._write_chunk(chunk, outgoing_file.on_transaction_response)
-            outgoing_file.position += len(data)
-
-            # give other entries on the queue a chance to run
-            if self.outgoing:
-                self.outgoing.send(outgoing_file)
-                return
 
     def _write_chunk(self, chunk, response_cb=None):
         assert chunk.transaction_id not in self.expected_responses, "MSRP transaction %r is already in progress" % chunk.transaction_id
@@ -329,13 +288,6 @@ class MSRPSession(object):
         if self.msrp._disconnected_event.ready():
             raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
         self.outgoing.send(OutgoingChunk(chunk, response_cb))
-
-    def send_file(self, outgoing_file):
-        if self.state != 'CONNECTED':
-            raise MSRPSessionError('Cannot send chunk because MSRPSession is %s' % self.state)
-        if self.msrp._disconnected_event.ready():
-            raise MSRPSessionError(str(self.msrp._disconnected_event.wait()))
-        self.outgoing.send(outgoing_file)
 
     def send_report(self, chunk, code, reason):
         if chunk.method != 'SEND':
