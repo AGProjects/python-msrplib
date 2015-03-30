@@ -172,9 +172,8 @@ class MSRPTransport(GreenTransportBase):
                 contflag = '+'
         chunk.add_header(protocol.ByteRangeHeader((start, end if length <= 2048 else None, length)))
         if message_id is None:
-            chunk.add_header(protocol.MessageIDHeader('%x' % random.getrandbits(64)))
-        else:
-            chunk.add_header(protocol.MessageIDHeader(message_id))
+            message_id = '%x' % random.getrandbits(64)
+        chunk.add_header(protocol.MessageIDHeader(message_id))
         # Byte-Range and Message-ID are neccessary because otherwise msrprelay does not work
         if method=='SEND':
             chunk.data = data
