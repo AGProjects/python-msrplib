@@ -191,7 +191,7 @@ class MSRPSession(object):
                         if method is not None:
                             method(chunk)
                         else:
-                            response = make_response(chunk, '501', 'Method unknown')
+                            response = make_response(chunk, 501, 'Method unknown')
                             self.outgoing.send(OutgoingChunk(response))
             except proc.LinkedExited: # writer has exited
                 pass
