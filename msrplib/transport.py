@@ -99,11 +99,11 @@ def make_response(chunk, code, comment):
         raise ChunkParseError('missing To-Path header: %r' % chunk)
     if not chunk.headers.get('From-Path'):
         raise ChunkParseError('missing From-Path header: %r' % chunk)
-    to_path = [chunk.headers['From-Path'].decoded[0]]
     if chunk.method=='SEND':
-        from_path = [chunk.headers['To-Path'].decoded[-1]]
+        to_path = [chunk.headers['From-Path'].decoded[0]]
     else:
-        from_path = chunk.headers['To-Path'].decoded
+        to_path = chunk.headers['From-Path'].decoded
+    from_path = [chunk.headers['To-Path'].decoded[0]]
     response = protocol.MSRPData(chunk.transaction_id, code=code, comment=comment)
     response.add_header(protocol.ToPathHeader(to_path))
     response.add_header(protocol.FromPathHeader(from_path))
