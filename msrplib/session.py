@@ -135,15 +135,14 @@ class MSRPSession(object):
             response_cb(chunk)
 
     def _check_incoming_SEND(self, chunk):
-        if chunk.segment is None:
-            error = self.msrp.check_incoming_SEND_chunk(chunk)
-            if error is not None:
-                return error
-            if chunk.data:
-                if chunk.headers.get('Content-Type') is None:
-                    return MSRPBadContentType('Content-type header missing')
-                if not contains_mime_type(self.accept_types, chunk.headers['Content-Type'].decoded):
-                    return MSRPBadContentType
+        error = self.msrp.check_incoming_SEND_chunk(chunk)
+        if error is not None:
+            return error
+        if chunk.data:
+            if chunk.headers.get('Content-Type') is None:
+                return MSRPBadContentType('Content-type header missing')
+            if not contains_mime_type(self.accept_types, chunk.headers['Content-Type'].decoded):
+                return MSRPBadContentType
 
     def _handle_incoming_SEND(self, chunk):
         error = self._check_incoming_SEND(chunk)

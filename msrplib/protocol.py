@@ -305,12 +305,6 @@ class UseNicknameHeader(MSRPNamedHeader):
 
 
 class MSRPData(object):
-
-    # for chunks that are generated locally by splitting a big incoming chunk
-    # segment will be a sequential index, starting with 1
-    segment = None
-    final = True
-
     def __init__(self, transaction_id, method=None, code=None, comment=None, headers=None, data='', contflag='$'):
         self.transaction_id = transaction_id
         self.method = method
@@ -434,6 +428,7 @@ class MSRPData(object):
 
     def encode(self):
         return self.encode_start() + self.data + self.encode_end(self.contflag)
+
 
 class MSRPProtocol(LineReceiver):
     MAX_LENGTH = 16384
