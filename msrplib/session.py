@@ -115,7 +115,7 @@ class MSRPSession(object):
             if not self.connected:
                 return
             try:
-                chunk = self.msrp.make_chunk()
+                chunk = self.msrp.make_send_request()
                 chunk.add_header(MSRPHeader('Keep-Alive', 'yes'))
                 self.deliver_chunk(chunk)
             except MSRPTransactionError, e:
@@ -314,7 +314,7 @@ class MSRPSession(object):
             raise MSRPTransactionError(comment=response.comment, code=response.code)
 
     def make_message(self, msg, content_type, message_id=None):
-        chunk = self.msrp.make_chunk(data=msg, message_id=message_id)
+        chunk = self.msrp.make_send_request(data=msg, message_id=message_id)
         chunk.add_header(protocol.ContentTypeHeader(content_type))
         return chunk
 

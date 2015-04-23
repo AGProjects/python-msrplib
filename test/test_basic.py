@@ -119,7 +119,7 @@ class TestBase(unittest.TestCase):
             raise
 
     def make_hello(self, msrptransport, success_report=None, failure_report=None):
-        chunk = msrptransport.make_chunk(data='hello')
+        chunk = msrptransport.make_send_request(data='hello')
         chunk.add_header(pr.ContentTypeHeader('text/plain'))
         # because MSRPTransport does not send the responses, the relay must not either
         if success_report is not None:

@@ -151,36 +151,29 @@ class MSRPTransport(GreenTransportBase):
     def full_remote_path(self):
         return self.remote_path + [self.remote_uri]
 
-    def make_chunk(self, transaction_id=None, method='SEND', code=None, comment=None, data='',
-                   contflag=None, start=1, end=None, length=None, message_id=None):
-        """Make a new MSRPData object with proper From-Path and To-Path headers set up.
-        In addition add Byte-Range and Message-ID headers.
-        """
-        if transaction_id is None:
-            transaction_id = '%x' % random.getrandbits(64)
-        chunk = protocol.MSRPData(transaction_id=transaction_id, method=method, code=code, comment=comment)
+    def make_request(self, method):
+        transaction_id = '%x' % random.getrandbits(64)
+        chunk = protocol.MSRPData(transaction_id=transaction_id, method=method)
         chunk.add_header(protocol.ToPathHeader(self.local_path + self.remote_path + [self.remote_uri]))
         chunk.add_header(protocol.FromPathHeader([self.local_uri]))
+        return chunk
+
+    def make_send_request(self, message_id=None, data='', start=1, end=None, length=None):
+        chunk = self.make_request('SEND')
         if end is None:
             end = start - 1 + len(data)
         if length is None:
             length = start - 1 + len(data)
-        if contflag is None:
-            if end == length:
-                contflag = '$'
-            else:
-                contflag = '+'
+        if end == length != '*':
+            contflag = '$'
+        else:
+            contflag = '+'
         chunk.add_header(protocol.ByteRangeHeader((start, end if length <= 2048 else None, length)))
         if message_id is None:
             message_id = '%x' % random.getrandbits(64)
         chunk.add_header(protocol.MessageIDHeader(message_id))
-        # Byte-Range and Message-ID are neccessary because otherwise msrprelay does not work
-        if method=='SEND':
-            chunk.data = data
-            chunk.contflag = contflag
-        else:
-            chunk.data = ''
-            chunk.contflag = '$'
+        chunk.data = data
+        chunk.contflag = contflag
         return chunk
 
     def _data_start(self, data):
@@ -262,7 +255,7 @@ class MSRPTransport(GreenTransportBase):
 
     def bind(self, full_remote_path):
         self._set_full_remote_path(full_remote_path)
-        chunk = self.make_chunk()
+        chunk = self.make_send_request()
         self.write_chunk(chunk)
         # With some ACM implementations both parties may think they are active,
         # so they will both send an empty SEND request. -Saul
