@@ -150,10 +150,9 @@ class MSRPSession(object):
             code, comment = 200, 'OK'
         else:
             code, comment = error.code, error.comment
-        if chunk.final:
-            response = make_response(chunk, code, comment)
-            if response is not None:
-                self.outgoing.send(OutgoingChunk(response))
+        response = make_response(chunk, code, comment)
+        if response is not None:
+            self.outgoing.send(OutgoingChunk(response))
         if code == 200:
             self._on_incoming_cb(chunk)
             if self.automatic_reports:
