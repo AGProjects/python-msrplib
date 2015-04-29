@@ -1,3 +1,13 @@
+python-msrplib (0.17.0) unstable; urgency=medium
+
+  * Remove file sending capability from MSRPSession
+  * Fix sending response to unknown chunks
+  * Fix building responses to non-SEND chunks
+  * Refactor make_chunk into make_request and make_send_request
+  * Removed leftovers from virtual chunking removal
+
+ -- Saul Ibarra <saul@ag-projects.com>  Wed, 29 Apr 2015 11:45:58 +0200
+
 python-msrplib (0.16.1) unstable; urgency=medium
 
   * Simplified file transfer code and fixed chunking of sent files
