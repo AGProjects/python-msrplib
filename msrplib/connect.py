@@ -149,9 +149,6 @@ class ConnectBase(object):
         self.use_sessmatch = use_sessmatch
         self.local_uri = None
 
-    def generate_local_uri(self, port=0):
-        return protocol.URI(port=port)
-
     def _connect(self, local_uri, remote_uri):
         self.logger.info('Connecting to %s' % (remote_uri, ))
         creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
@@ -200,7 +197,7 @@ class DirectConnector(ConnectBase):
         return '<%s at %s local_uri=%s>' % (type(self).__name__, hex(id(self)), getattr(self, 'local_uri', '(none)'))
 
     def prepare(self, local_uri=None):
-        local_uri = local_uri or self.generate_local_uri()
+        local_uri = local_uri or protocol.URI(port=0)
         local_uri.port = local_uri.port or 2855
         self.local_uri = local_uri
         return [local_uri]
@@ -239,7 +236,7 @@ class DirectAcceptor(ConnectBase):
         Return full local path, suitable to put in SDP a:path attribute.
         Note, that `local_uri' may be updated in place.
         """
-        local_uri = local_uri or self.generate_local_uri()
+        local_uri = local_uri or protocol.URI(port=0)
         self.transport_event = coros.event()
         local_uri.host = gethostbyname(local_uri.host)
         factory = SpawnFactory(self.transport_event, MSRPTransport, local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
@@ -337,7 +334,7 @@ class RelayConnection(ConnectBase):
             return self._relay_connect()
 
     def prepare(self, local_uri=None):
-        self.local_uri = local_uri or self.generate_local_uri()
+        self.local_uri = local_uri or protocol.URI(port=0)
         self.msrp = self._relay_connect_timeout()
         return self.msrp.full_local_path
 
@@ -406,7 +403,7 @@ class MSRPServer(ConnectBase):
         Add `local_uri' to the list of expected URIs, so that incoming connections featuring this URI won't be rejected.
         If `logger' is provided use it for this connection instead of the default one.
         """
-        local_uri = local_uri or self.generate_local_uri(2855)
+        local_uri = local_uri or protocol.URI(port=2855)
         need_listen = True
         if local_uri.port:
             use_tls, listening_port = self.ports.get(local_uri.host, {}).get(local_uri.port, (None, None))
