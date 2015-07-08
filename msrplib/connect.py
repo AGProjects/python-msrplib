@@ -147,6 +147,7 @@ class ConnectBase(object):
     def __init__(self, logger=Null, use_sessmatch=False):
         self.logger = logger
         self.use_sessmatch = use_sessmatch
+        self.local_uri = None
 
     def generate_local_uri(self, port=0):
         return protocol.URI(port=port)
@@ -199,12 +200,10 @@ class DirectConnector(ConnectBase):
         return '<%s at %s local_uri=%s>' % (type(self).__name__, hex(id(self)), getattr(self, 'local_uri', '(none)'))
 
     def prepare(self, local_uri=None):
-        if local_uri is None:
-            local_uri = self.generate_local_uri()
+        local_uri = local_uri or self.generate_local_uri()
+        local_uri.port = local_uri.port or 2855
         self.local_uri = local_uri
-        if not self.local_uri.port:
-            self.local_uri.port = 2855
-        return [self.local_uri]
+        return [local_uri]
 
     def getHost(self):
         return IPv4Address('TCP', self.host_ip, 0)
@@ -229,7 +228,6 @@ class DirectAcceptor(ConnectBase):
         ConnectBase.__init__(self, logger, use_sessmatch)
         self.listening_port = None
         self.transport_event = None
-        self.local_uri = None
 
     def __repr__(self):
         return '<%s at %s local_uri=%s listening_port=%s>' % (type(self).__name__, hex(id(self)), self.local_uri, self.listening_port)
@@ -241,8 +239,7 @@ class DirectAcceptor(ConnectBase):
         Return full local path, suitable to put in SDP a:path attribute.
         Note, that `local_uri' may be updated in place.
         """
-        if local_uri is None:
-            local_uri = self.generate_local_uri()
+        local_uri = local_uri or self.generate_local_uri()
         self.transport_event = coros.event()
         local_uri.host = gethostbyname(local_uri.host)
         factory = SpawnFactory(self.transport_event, MSRPTransport, local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
@@ -304,17 +301,17 @@ class RelayConnection(ConnectBase):
     def __repr__(self):
         return '<%s at %s relay=%r msrp=%s>' % (type(self).__name__, hex(id(self)), self.relay, self.msrp)
 
-    def _relay_connect(self, local_uri):
+    def _relay_connect(self):
         try:
-            msrp = self._connect(local_uri, self.relay)
+            msrp = self._connect(self.local_uri, self.relay)
         except Exception:
             self.logger.info('Could not connect  to relay %s' % self.relay)
             raise
         try:
-            local_uri.port = msrp.getHost().port
+            self.local_uri.port = msrp.getHost().port
             msrpdata = protocol.MSRPData(method="AUTH", transaction_id='%x' % random.getrandbits(64))
             msrpdata.add_header(protocol.ToPathHeader([self.relay.uri_domain]))
-            msrpdata.add_header(protocol.FromPathHeader([local_uri]))
+            msrpdata.add_header(protocol.FromPathHeader([self.local_uri]))
             response = _deliver_chunk(msrp, msrpdata)
             if response.code == 401:
                 www_authenticate = response.headers["WWW-Authenticate"]
@@ -335,14 +332,13 @@ class RelayConnection(ConnectBase):
             raise
         return msrp
 
-    def _relay_connect_timeout(self, local_uri):
+    def _relay_connect_timeout(self):
         with MSRPRelayConnectTimeout.timeout():
-            return self._relay_connect(local_uri)
+            return self._relay_connect()
 
     def prepare(self, local_uri=None):
-        if local_uri is None:
-            local_uri = self.generate_local_uri()
-        self.msrp = self._relay_connect_timeout(local_uri)
+        self.local_uri = local_uri or self.generate_local_uri()
+        self.msrp = self._relay_connect_timeout()
         return self.msrp.full_local_path
 
     def getHost(self):
@@ -410,8 +406,7 @@ class MSRPServer(ConnectBase):
         Add `local_uri' to the list of expected URIs, so that incoming connections featuring this URI won't be rejected.
         If `logger' is provided use it for this connection instead of the default one.
         """
-        if local_uri is None:
-            local_uri = self.generate_local_uri(2855)
+        local_uri = local_uri or self.generate_local_uri(2855)
         need_listen = True
         if local_uri.port:
             use_tls, listening_port = self.ports.get(local_uri.host, {}).get(local_uri.port, (None, None))
@@ -432,6 +427,7 @@ class MSRPServer(ConnectBase):
             port = self._listen(local_uri, self.factory)
             self.ports.setdefault(local_uri.host, {})[local_uri.port] = (local_uri.use_tls, port)
         self.expected_local_uris[local_uri] = logger
+        self.local_uri = local_uri
         return [local_uri]
 
     def _incoming_handler(self, msrp):
