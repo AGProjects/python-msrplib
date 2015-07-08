@@ -191,8 +191,6 @@ class ConnectBase(object):
 
 class DirectConnector(ConnectBase):
 
-    BOGUS_LOCAL_PORT = 12345
-
     def __init__(self, logger=Null, use_sessmatch=False):
         ConnectBase.__init__(self, logger, use_sessmatch)
         self.host_ip = host.default_ip
@@ -202,7 +200,7 @@ class DirectConnector(ConnectBase):
 
     def prepare(self, local_uri=None):
         if local_uri is None:
-            local_uri = self.generate_local_uri(self.BOGUS_LOCAL_PORT)
+            local_uri = self.generate_local_uri()
         self.local_uri = local_uri
         if not self.local_uri.port:
             self.local_uri.port = 2855
