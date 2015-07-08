@@ -1,3 +1,12 @@
+python-msrplib (0.18.0) unstable; urgency=medium
+
+  * Removed bogus class attribute
+  * Added .local_uri attribute to all connectors
+  * Removed unnecessary instance method from connectors
+  * Added dh-python to Build-Depends
+
+ -- Dan Pascu <dan@ag-projects.com>  Wed, 08 Jul 2015 17:26:37 +0300
+
 python-msrplib (0.17.0) unstable; urgency=medium
 
   * Remove file sending capability from MSRPSession
