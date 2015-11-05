@@ -38,7 +38,7 @@ def contains_mime_type(mimetypelist, mimetype):
     mimietypelist either contains the complete mime types, such as 'text/plain',
     or simple patterns, like 'text/*', or simply '*'.
     """
-    mimetype = mimetype.lower()
+    mimetype = mimetype.lower().partition(';')[0]
     for pattern in mimetypelist:
         pattern = pattern.lower()
         if pattern == '*':
