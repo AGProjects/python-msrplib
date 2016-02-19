@@ -51,6 +51,7 @@ from eventlib.twistedutil.protocol import GreenClientCreator, SpawnFactory
 from eventlib import coros
 from eventlib.api import timeout, sleep
 from eventlib.green.socket import gethostbyname
+from gnutls.interfaces.twisted import TLSContext
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import MSRPTransport, MSRPTransactionError, MSRPBadRequest, MSRPNoSuchSessionError
@@ -162,7 +163,7 @@ class ConnectBase(object):
                 raise ValueError("remote_uri must have either 'host' or 'domain'")
             if remote_uri.use_tls:
                 connectFuncName = 'connectTLS'
-                connectFuncArgs = (local_uri.credentials,)
+                connectFuncArgs = (TLSContext(local_uri.credentials),)
             else:
                 connectFuncName = 'connectTCP'
                 connectFuncArgs = ()
@@ -176,7 +177,7 @@ class ConnectBase(object):
     def _listen(self, local_uri, factory):
         from twisted.internet import reactor
         if local_uri.use_tls:
-            port = reactor.listenTLS(local_uri.port or 0, factory, local_uri.credentials, interface=local_uri.host)
+            port = reactor.listenTLS(local_uri.port or 0, factory, TLSContext(local_uri.credentials), interface=local_uri.host)
         else:
             port = reactor.listenTCP(local_uri.port or 0, factory, interface=local_uri.host)
         local_uri.port = port.getHost().port
