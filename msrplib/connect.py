@@ -155,7 +155,7 @@ class ConnectBase(object):
         creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
         if remote_uri.host:
             if remote_uri.use_tls:
-                msrp = creator.connectTLS(remote_uri.host, remote_uri.port or 2855, local_uri.credentials)
+                msrp = creator.connectTLS(remote_uri.host, remote_uri.port or 2855, TLSContext(local_uri.credentials))
             else:
                 msrp = creator.connectTCP(remote_uri.host, remote_uri.port or 2855)
         else:
