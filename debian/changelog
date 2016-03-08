@@ -1,10 +1,10 @@
-python-msrplib (0.18.1) UNRELEASED; urgency=medium
+python-msrplib (0.18.1) unstable; urgency=medium
 
   * Fixed mime type check to take into account parameters
   * Adapted to API changes in python-gnutls 3.0
   * Fix zope interface dependency name
 
- -- Saul Ibarra <saul@ag-projects.com>  Fri, 19 Feb 2016 17:48:15 +0100
+ -- Saul Ibarra <saul@ag-projects.com>  Tue, 08 Mar 2016 12:47:12 +0100
 
 python-msrplib (0.18.0) unstable; urgency=medium
 
