@@ -283,8 +283,7 @@ class MSRPTransport(GreenTransportBase):
             self.loseConnection(wait=False)
             raise
         except Exception:
-            log.error('Failed to generate a response')
-            log.err()
+            log.exception('Failed to generate a response')
             self.loseConnection(wait=False)
             raise
         else:
