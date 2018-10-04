@@ -9,6 +9,9 @@ from msrplib import protocol, MSRPError
 from msrplib.trafficlog import Logger
 
 
+log = log.get_logger('msrplib')
+
+
 class ChunkParseError(MSRPError):
     """Failed to parse incoming chunk"""
 
