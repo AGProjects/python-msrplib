@@ -1,3 +1,16 @@
+python-msrplib (0.19.2) unstable; urgency=medium
+
+  * Replaced deprecated log.err() function with log.exception()
+  * Use a named logger to properly separate the msrplib log messages
+  * Updated dependency on python-application
+  * Updated debian standards version
+  * Increased debian compatibility level to 9
+  * Removed obsolete pycompat/pyversions files
+  * Removed unnecessary .PHONY target
+  * Updated debian uploaders
+
+ -- Dan Pascu <dan@ag-projects.com>  Thu, 04 Oct 2018 22:03:11 +0300
+
 python-msrplib (0.19.1) unstable; urgency=medium
 
   * Fixed dependency on python-gnutls >= 3.0.0
