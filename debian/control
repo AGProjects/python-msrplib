@@ -2,12 +2,18 @@ Source: python-msrplib
 Section: python
 Priority: optional
 Maintainer: Dan Pascu <dan@ag-projects.com>
-Build-Depends: debhelper (>= 9), dh-python, python (>= 2.7)
+Build-Depends: debhelper (>= 11), dh-python, python
 Standards-Version: 3.9.8
 
 Package: python-msrplib
 Architecture: all
-Depends: ${python:Depends}, ${misc:Depends}, python-application (>= 2.5.0), python-gnutls (>= 3.0.0), python-twisted-core, python-twisted-names, python-zope.interface, python-eventlib
+Depends: ${python:Depends}, ${misc:Depends},
+         python-application (>= 2.5.0),
+         python-gnutls (>= 3.0.0),
+         python-eventlib,
+         python-twisted-core,
+         python-twisted-names,
+         python-zope.interface
 Description: MSRP client library, implements RFC4975 and RFC4976
  Message Session Relay Protocol (MSRP) is a protocol for transmitting
  a series of related instant messages in the context of a session. Message
