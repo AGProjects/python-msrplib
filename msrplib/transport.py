@@ -46,10 +46,10 @@ data_start, data_end, data_write, data_final_write = xrange(4)
 
 class MSRPProtocol_withLogging(protocol.MSRPProtocol):
 
-    _new_chunk = False
+    _new_chunk = True
 
     def rawDataReceived(self, data):
-        self.msrp_transport.logger.report_in(data, self.msrp_transport)
+        self.msrp_transport.logger.report_in(data, self.msrp_transport, self._new_chunk)
         protocol.MSRPProtocol.rawDataReceived(self, data)
 
     def lineReceived(self, line):
