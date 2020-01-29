@@ -25,7 +25,7 @@ class MSRPHeaderMeta(type):
     def __init__(cls, name, bases, dict):
         type.__init__(cls, name, bases, dict)
         try:
-            cls.header_classes[dict["name"]] = name
+            cls.header_classes[dict['name']] = cls
         except KeyError:
             pass
 
@@ -34,7 +34,7 @@ class MSRPHeader(object):
 
     def __new__(cls, name, value):
         if isinstance(value, str) and name in MSRPHeaderMeta.header_classes:
-            cls = eval(MSRPHeaderMeta.header_classes[name])
+            cls = MSRPHeaderMeta.header_classes[name]
         return object.__new__(cls)
 
     def __init__(self, name, value):
