@@ -483,11 +483,11 @@ class MSRPProtocol(LineReceiver):
                         self._reset()
                         return
                     try:
-                        hname, hval = line.split(": ", 2)
+                        name, value = line.split(': ', 1)
                     except ValueError:
                         return # let this pass silently, we'll just not read this line
                     else:
-                        self.data.add_header(MSRPHeader(hname, hval))
+                        self.data.add_header(MSRPHeader(name, value))
         else: # we received a new message
             try:
                 msrp, transaction_id, rest = line.split(" ", 2)
