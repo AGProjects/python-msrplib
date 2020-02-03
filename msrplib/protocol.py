@@ -4,6 +4,7 @@ from collections import deque
 import re
 import random
 
+from twisted.internet.protocol import connectionDone
 from twisted.protocols.basic import LineReceiver
 from application.system import host as host_module
 
@@ -537,7 +538,7 @@ class MSRPProtocol(LineReceiver):
             self.msrp_transport.logger.received_chunk_data(data, self.msrp_transport, transaction_id=self.data.transaction_id)
             self.msrp_transport._data_write(data, final=False)
 
-    def connectionLost(self, reason):
+    def connectionLost(self, reason=connectionDone):
         self.msrp_transport._connectionLost(reason)
 
 
