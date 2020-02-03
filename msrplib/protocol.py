@@ -658,8 +658,3 @@ class URI(ConnectInfo):
 
     def __hash__(self):
         return hash((self.use_tls, self.host.lower(), self.port, self.session_id, self.transport.lower()))
-
-
-if __name__ == '__main__':
-    import sys
-    print parse_uri(sys.argv[1])
