@@ -1,12 +1,12 @@
 # Copyright (C) 2008-2012 AG Projects. See LICENSE for details
 
-from collections import deque
-import re
 import random
+import re
 
+from collections import deque
+from application.system import host as host_module
 from twisted.internet.protocol import connectionDone
 from twisted.protocols.basic import LineReceiver
-from application.system import host as host_module
 
 from msrplib import MSRPError
 
