@@ -430,11 +430,11 @@ class MSRPData(object):
         self.data = data
         self.contflag = contflag
         if method is not None:
-            self._first_line = 'MSRP {} {}'.format(transaction_id, method)
+            self.first_line = 'MSRP {} {}'.format(transaction_id, method)
         elif comment is None:
-            self._first_line = 'MSRP {} {:03d}'.format(transaction_id, code)
+            self.first_line = 'MSRP {} {:03d}'.format(transaction_id, code)
         else:
-            self._first_line = 'MSRP {} {:03d} {}'.format(transaction_id, code, comment)
+            self.first_line = 'MSRP {} {:03d} {}'.format(transaction_id, code, comment)
 
     def copy(self):
         return self.__class__(self.transaction_id, self.method, self.code, self.comment, self.headers.copy(), self.data, self.contflag)
@@ -443,14 +443,14 @@ class MSRPData(object):
         if name in {'method', 'code', 'comment'} and name in self.__dict__:
             raise AttributeError('Cannot overwrite attribute')
         if name == 'transaction_id' and name in self.__dict__:
-            self._first_line = self._first_line.replace(self.transaction_id, value)
+            self.first_line = self.first_line.replace(self.transaction_id, value)
         super(MSRPData, self).__setattr__(name, value)
 
     def __str__(self):  # TODO: make __str__ == encode()?
-        return self._first_line
+        return self.first_line
 
     def __repr__(self):
-        description = self._first_line
+        description = self.first_line
         for name in sorted(self.headers, key=HeaderOrdering.sort_key):
             description += ' {}={!r}'.format(name, self.headers[name].encoded)
         description += ' len={}'.format(self.size)
@@ -458,7 +458,7 @@ class MSRPData(object):
 
     def __eq__(self, other):
         if isinstance(other, MSRPData):
-            return self._first_line == other._first_line and self.headers == other.headers and self.data == other.data and self.contflag == other.contflag
+            return self.first_line == other.first_line and self.headers == other.headers and self.data == other.data and self.contflag == other.contflag
         return NotImplemented
 
     def __ne__(self, other):
@@ -512,7 +512,7 @@ class MSRPData(object):
         return len(self.data)
 
     def encode_start(self):
-        lines = [self._first_line] + ['{}: {}'.format(name, self.headers[name].encoded) for name in sorted(self.headers, key=HeaderOrdering.sort_key)]
+        lines = [self.first_line] + ['{}: {}'.format(name, self.headers[name].encoded) for name in sorted(self.headers, key=HeaderOrdering.sort_key)]
         if 'Content-Type' in self.headers:
             lines.append('\r\n')
         return '\r\n'.join(lines)
