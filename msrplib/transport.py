@@ -134,7 +134,6 @@ class MSRPTransport(GreenTransportBase):
         self.remote_uri = None
         self.remote_path = []
         self.use_sessmatch = use_sessmatch
-        self._msrpdata = None
 
     def next_host(self):
         if self.local_path:
@@ -214,14 +213,11 @@ class MSRPTransport(GreenTransportBase):
 
         assert max_size > 0
 
-        if self._msrpdata is None:
-            func, msrpdata = self._wait()
-            if func!=data_start:
-                self.logger.debug('Bad data: %r %r' % (func, msrpdata))
-                self.loseConnection()
-                raise ChunkParseError
-        else:
-            msrpdata = self._msrpdata
+        func, msrpdata = self._wait()
+        if func!=data_start:
+            self.logger.debug('Bad data: %r %r' % (func, msrpdata))
+            self.loseConnection()
+            raise ChunkParseError
         data = msrpdata.data
         func, param = self._wait()
         while func == data_write:
@@ -244,7 +240,6 @@ class MSRPTransport(GreenTransportBase):
             raise ChunkParseError
         msrpdata.data = data
         msrpdata.contflag = param
-        self._msrpdata = None
         self.logger.debug('read_chunk -> %r' % (msrpdata, ))
         return msrpdata
 
