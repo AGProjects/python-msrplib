@@ -307,6 +307,12 @@ class UseNicknameHeader(MSRPNamedHeader):
 
 class MSRPData(object):
     def __init__(self, transaction_id, method=None, code=None, comment=None, headers=None, data='', contflag='$'):
+        if method is None and code is None:
+            raise ValueError('either method or code must be specified')
+        elif method is not None and code is not None:
+            raise ValueError('method and code cannot be both specified')
+        elif code is None and comment is not None:
+            raise ValueError('comment should only be specified when code is specified')
         self.transaction_id = transaction_id
         self.method = method
         self.code = code
