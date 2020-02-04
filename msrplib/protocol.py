@@ -436,9 +436,6 @@ class MSRPData(object):
         else:
             self.first_line = 'MSRP {} {:03d} {}'.format(transaction_id, code, comment)
 
-    def copy(self):
-        return self.__class__(self.transaction_id, self.method, self.code, self.comment, self.headers.copy(), self.data, self.contflag)
-
     def __setattr__(self, name, value):
         if name in {'method', 'code', 'comment'} and name in self.__dict__:
             raise AttributeError('Cannot overwrite attribute')
@@ -463,6 +460,9 @@ class MSRPData(object):
 
     def __ne__(self, other):
         return not self == other
+
+    def copy(self):
+        return self.__class__(self.transaction_id, self.method, self.code, self.comment, self.headers.copy(), self.data, self.contflag)
 
     def add_header(self, header):
         self.headers[header.name] = header
