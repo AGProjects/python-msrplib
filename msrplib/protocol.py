@@ -450,9 +450,12 @@ class MSRPData(object):
         return '<{} at {:#x} {} {}>'.format(self.__class__.__name__, id(self), description, self.contflag)
 
     def __eq__(self, other):
-        if not isinstance(other, MSRPData):
-            return False
-        return self.encode()==other.encode()
+        if isinstance(other, MSRPData):
+            return self._first_line == other._first_line and self.headers == other.headers and self.data == other.data and self.contflag == other.contflag
+        return NotImplemented
+
+    def __ne__(self, other):
+        return not self == other
 
     def add_header(self, header):
         self.headers[header.name] = header
