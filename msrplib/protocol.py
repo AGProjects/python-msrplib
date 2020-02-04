@@ -439,6 +439,13 @@ class MSRPData(object):
     def copy(self):
         return self.__class__(self.transaction_id, self.method, self.code, self.comment, self.headers.copy(), self.data, self.contflag)
 
+    def __setattr__(self, name, value):
+        if name in {'method', 'code', 'comment'} and name in self.__dict__:
+            raise AttributeError('Cannot overwrite attribute')
+        if name == 'transaction_id' and name in self.__dict__:
+            self._first_line = self._first_line.replace(self.transaction_id, value)
+        super(MSRPData, self).__setattr__(name, value)
+
     def __str__(self):  # TODO: make __str__ == encode()?
         return self._first_line
 
