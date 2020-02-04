@@ -1,7 +1,6 @@
 # Copyright (C) 2008-2012 AG Projects. See LICENSE for details
 #
 
-import random
 import traceback
 
 from time import time
@@ -13,21 +12,24 @@ from eventlib.twistedutil.protocol import ValueQueue
 
 from msrplib import protocol, MSRPError
 from msrplib.transport import make_report, make_response, MSRPTransactionError
-from msrplib.protocol import ContentTypeHeader, MSRPHeader
+
 
 ConnectionClosedErrors = (ConnectionClosed, GNUTLSError)
 
+
 class MSRPSessionError(MSRPError):
     pass
+
 
 class MSRPBadContentType(MSRPTransactionError):
     code = 415
     comment = 'Unsupported media type'
 
-class LocalResponse(MSRPTransactionError):
 
+class LocalResponse(MSRPTransactionError):
     def __repr__(self):
         return '<LocalResponse %s %s>' % (self.code, self.comment)
+
 
 Response200OK = LocalResponse("OK", 200)
 Response408Timeout = LocalResponse("Timed out while waiting for transaction response", 408)
@@ -116,7 +118,7 @@ class MSRPSession(object):
                 return
             try:
                 chunk = self.msrp.make_send_request()
-                chunk.add_header(MSRPHeader('Keep-Alive', 'yes'))
+                chunk.add_header(protocol.MSRPHeader('Keep-Alive', 'yes'))
                 self.deliver_chunk(chunk)
             except MSRPTransactionError, e:
                 if e.code == 408:
@@ -139,9 +141,9 @@ class MSRPSession(object):
         if error is not None:
             return error
         if chunk.data:
-            if chunk.headers.get('Content-Type') is None:
-                return MSRPBadContentType('Content-type header missing')
-            if not contains_mime_type(self.accept_types, chunk.headers['Content-Type'].decoded):
+            if chunk.content_type is None:
+                return MSRPBadContentType('Content-Type header missing')
+            if not contains_mime_type(self.accept_types, chunk.content_type):
                 return MSRPBadContentType
 
     def _handle_incoming_SEND(self, chunk):

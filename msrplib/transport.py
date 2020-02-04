@@ -73,17 +73,16 @@ class MSRPProtocol_withLogging(protocol.MSRPProtocol):
 def make_report(chunk, code, comment):
     if chunk.success_report == 'yes' or (chunk.failure_report in ('yes', 'partial') and code != 200):
         report = protocol.MSRPData(transaction_id='%x' % random.getrandbits(64), method='REPORT')
-        report.add_header(protocol.ToPathHeader(chunk.headers['From-Path'].decoded))
-        report.add_header(protocol.FromPathHeader([chunk.headers['To-Path'].decoded[0]]))
-        report.add_header(protocol.StatusHeader('000 %d %s' % (code, comment)))
+        report.add_header(protocol.ToPathHeader(chunk.from_path))
+        report.add_header(protocol.FromPathHeader([chunk.to_path[0]]))
+        report.add_header(protocol.StatusHeader(protocol.Status(code, comment)))
         report.add_header(protocol.MessageIDHeader(chunk.message_id))
-        byterange = chunk.headers.get('Byte-Range')
-        if byterange is None:
+        if chunk.byte_range is None:
             start = 1
             total = chunk.size
         else:
-            start, end, total = byterange.decoded
-        report.add_header(protocol.ByteRangeHeader((start, start+chunk.size-1, total)))
+            start, end, total = chunk.byte_range
+        report.add_header(protocol.ByteRangeHeader(protocol.ByteRange(start, start+chunk.size-1, total)))
         return report
     else:
         return None
@@ -94,19 +93,19 @@ def make_response(chunk, code, comment):
     If the response is not needed, return None.
     If a required header missing, raise ChunkParseError.
     """
-    if chunk.failure_report=='no':
+    if chunk.failure_report == 'no':
         return
-    if chunk.failure_report=='partial' and code==200:
+    if chunk.failure_report == 'partial' and code == 200:
         return
-    if not chunk.headers.get('To-Path'):
+    if chunk.to_path is None:
         raise ChunkParseError('missing To-Path header: %r' % chunk)
-    if not chunk.headers.get('From-Path'):
+    if chunk.from_path is None:
         raise ChunkParseError('missing From-Path header: %r' % chunk)
-    if chunk.method=='SEND':
-        to_path = [chunk.headers['From-Path'].decoded[0]]
+    if chunk.method == 'SEND':
+        to_path = [chunk.from_path[0]]
     else:
-        to_path = chunk.headers['From-Path'].decoded
-    from_path = [chunk.headers['To-Path'].decoded[0]]
+        to_path = chunk.from_path
+    from_path = [chunk.to_path[0]]
     response = protocol.MSRPData(chunk.transaction_id, code=code, comment=comment)
     response.add_header(protocol.ToPathHeader(to_path))
     response.add_header(protocol.FromPathHeader(from_path))
@@ -171,7 +170,7 @@ class MSRPTransport(GreenTransportBase):
             contflag = '$'
         else:
             contflag = '+'
-        chunk.add_header(protocol.ByteRangeHeader((start, end if length <= 2048 else None, length)))
+        chunk.add_header(protocol.ByteRangeHeader(protocol.ByteRange(start, end if length <= 2048 else None, length)))
         if message_id is None:
             message_id = '%x' % random.getrandbits(64)
         chunk.add_header(protocol.MessageIDHeader(message_id))
@@ -315,32 +314,28 @@ class MSRPTransport(GreenTransportBase):
         Return None is the paths are valid for this connection.
         If an error is detected and MSRPError is created and returned.
         """
-        assert chunk.method=='SEND', repr(chunk)
-        try:
-            ToPath = chunk.headers['To-Path']
-        except KeyError:
+        assert chunk.method == 'SEND', repr(chunk)
+        if chunk.to_path is None:
             return MSRPBadRequest('To-Path header missing')
-        try:
-            FromPath = chunk.headers['From-Path']
-        except KeyError:
+        if chunk.from_path is None:
             return MSRPBadRequest('From-Path header missing')
-        ToPath = list(ToPath.decoded)
-        FromPath = list(FromPath.decoded)
-        ExpectedTo = [self.local_uri]
-        ExpectedFrom = self.local_path + self.remote_path + [self.remote_uri]
+        to_path = list(chunk.to_path)
+        from_path = list(chunk.from_path)
+        expected_to = [self.local_uri]
+        expected_from = self.local_path + self.remote_path + [self.remote_uri]
         # Match only session ID when use_sessmatch is set (http://tools.ietf.org/html/draft-ietf-simple-msrp-sessmatch-10)
         if self.use_sessmatch:
-            if ToPath[0].session_id != ExpectedTo[0].session_id:
-                log.error('To-Path: expected session_id %s, got %s' % (ExpectedTo[0].session_id, ToPath[0].session_id))
+            if to_path[0].session_id != expected_to[0].session_id:
+                log.error('To-Path: expected session_id %s, got %s' % (expected_to[0].session_id, to_path[0].session_id))
                 return MSRPNoSuchSessionError('Invalid To-Path')
-            if FromPath[0].session_id != ExpectedFrom[0].session_id:
-                log.error('From-Path: expected session_id %s, got %s' % (ExpectedFrom[0].session_id, FromPath[0].session_id))
+            if from_path[0].session_id != expected_from[0].session_id:
+                log.error('From-Path: expected session_id %s, got %s' % (expected_from[0].session_id, from_path[0].session_id))
                 return MSRPNoSuchSessionError('Invalid From-Path')
         else:
-            if ToPath != ExpectedTo:
-                log.error('To-Path: expected %r, got %r' % (ExpectedTo, ToPath))
+            if to_path != expected_to:
+                log.error('To-Path: expected %r, got %r' % (expected_to, to_path))
                 return MSRPNoSuchSessionError('Invalid To-Path')
-            if FromPath != ExpectedFrom:
-                log.error('From-Path: expected %r, got %r' % (ExpectedFrom, FromPath))
+            if from_path != expected_from:
+                log.error('From-Path: expected %r, got %r' % (expected_from, from_path))
                 return MSRPNoSuchSessionError('Invalid From-Path')
 

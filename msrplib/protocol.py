@@ -3,7 +3,7 @@
 import random
 import re
 
-from collections import deque
+from collections import deque, namedtuple
 from application.system import host as host_module
 from twisted.internet.protocol import connectionDone
 from twisted.protocols.basic import LineReceiver
@@ -14,29 +14,210 @@ from msrplib import MSRPError
 class ParsingError(MSRPError):
     pass
 
-class HeaderParsingError(ParsingError):
 
-    def __init__(self, header):
+class HeaderParsingError(ParsingError):
+    def __init__(self, header, reason):
         self.header = header
-        ParsingError.__init__(self, "Error parsing %s header" % header)
+        ParsingError.__init__(self, 'Error parsing {} header: {}'.format(header, reason))
+
+
+# Header value data types (for decoded values)
+#
+
+ByteRange = namedtuple('ByteRange', ['start', 'end', 'total'])
+Status = namedtuple('Status', ['code', 'comment'])
+ContentDisposition = namedtuple('ContentDisposition', ['disposition', 'parameters'])
+
+
+# Header value types (describe how to encode/decode the value)
+#
+
+class SimpleHeaderType(object):
+    data_type = object
+
+    @staticmethod
+    def decode(encoded):
+        return encoded
+
+    @staticmethod
+    def encode(decoded):
+        return decoded
+
+
+class UTF8HeaderType(object):
+    data_type = unicode
+
+    @staticmethod
+    def decode(encoded):
+        return encoded.decode('utf-8')
+
+    @staticmethod
+    def encode(decoded):
+        return decoded.encode('utf-8')
+
+
+class URIHeaderType(object):
+    data_type = deque
+
+    @staticmethod
+    def decode(encoded):
+        return deque(parse_uri(uri) for uri in encoded.split(' '))
+
+    @staticmethod
+    def encode(decoded):
+        return ' '.join(str(uri) for uri in decoded)
+
+
+class IntegerHeaderType(object):
+    data_type = int
+
+    @staticmethod
+    def decode(encoded):
+        return int(encoded)
+
+    @staticmethod
+    def encode(decoded):
+        return str(decoded)
+
+
+class LimitedChoiceHeaderType(SimpleHeaderType):
+    allowed_values = frozenset()
+
+    @classmethod
+    def decode(cls, encoded):
+        if encoded not in cls.allowed_values:
+            raise ValueError('Invalid value: {!r}'.format(encoded))
+        return encoded
+
+
+class SuccessReportHeaderType(LimitedChoiceHeaderType):
+    allowed_values = frozenset({'yes', 'no'})
+
+
+class FailureReportHeaderType(LimitedChoiceHeaderType):
+    allowed_values = frozenset({'yes', 'no', 'partial'})
+
+
+class ByteRangeHeaderType(object):
+    data_type = ByteRange
+
+    regex = re.compile(r'(?P<start>\d+)-(?P<end>\*|\d+)/(?P<total>\*|\d+)')
+
+    @classmethod
+    def decode(cls, encoded):
+        match = cls.regex.match(encoded)
+        if match is None:
+            raise ValueError('Invalid byte range value: {!r}'.format(encoded))
+        start, end, total = match.groups()
+        start = int(start)
+        end = int(end) if end != '*' else None
+        total = int(total) if total != '*' else None
+        return ByteRange(start, end, total)
+
+    @staticmethod
+    def encode(decoded):
+        start, end, total = decoded
+        return '{}-{}/{}'.format(start, end or '*', total or '*')
+
+
+class StatusHeaderType(object):
+    data_type = Status
+
+    @staticmethod
+    def decode(encoded):
+        namespace, sep, rest = encoded.partition(' ')
+        if namespace != '000' or sep != ' ':
+            raise ValueError('Invalid status value: {!r}'.format(encoded))
+        code, _, comment = rest.partition(' ')
+        if not code.isdigit() or len(code) != 3:
+            raise ValueError('Invalid status code: {!r}'.format(code))
+        return Status(int(code), comment or None)
+
+    @staticmethod
+    def encode(decoded):
+        code, comment = decoded
+        if comment is None:
+            return '000 {:03d}'.format(code)
+        else:
+            return '000 {:03d} {}'.format(code, comment)
+
+
+class ContentDispositionHeaderType(object):
+    data_type = ContentDisposition
+
+    regex = re.compile(r'(\w+)=("[^"]+"|[^";]+)')
+
+    @classmethod
+    def decode(cls, encoded):
+        disposition, _, parameters = encoded.partition(';')
+        if not disposition:
+            raise ValueError('Invalid content disposition: {!r}'.format(encoded))
+        return ContentDisposition(disposition, {name: value.strip('"') for name, value in cls.regex.findall(parameters)})
+
+    @staticmethod
+    def encode(decoded):
+        disposition, parameters = decoded
+        return '; '.join([disposition] + ['{}="{}"'.format(name, value) for name, value in parameters.iteritems()])
+
+
+class ParameterListHeaderType(object):
+    data_type = dict
+
+    regex = re.compile(r'(\w+)=("[^"]+"|[^",]+)')
+
+    @classmethod
+    def decode(cls, encoded):
+        return {name: value.strip('"') for name, value in cls.regex.findall(encoded)}
+
+    @staticmethod
+    def encode(decoded):
+        return ', '.join('{}="{}"'.format(name, value) for name, value in decoded.iteritems())
+
+
+class DigestHeaderType(ParameterListHeaderType):
+    @classmethod
+    def decode(cls, encoded):
+        algorithm, sep, parameters = encoded.partition(' ')
+        if algorithm != 'Digest' or sep != ' ':
+            raise ValueError('Invalid Digest header value')
+        return super(DigestHeaderType, cls).decode(parameters)
+
+    @staticmethod
+    def encode(decoded):
+        return 'Digest ' + super(DigestHeaderType, DigestHeaderType).encode(decoded)
+
+
+# Header classes
+#
 
 class MSRPHeaderMeta(type):
-    header_classes = {}
+    __classmap__ = {}
 
-    def __init__(cls, name, bases, dict):
-        type.__init__(cls, name, bases, dict)
-        try:
-            cls.header_classes[dict['name']] = cls
-        except KeyError:
-            pass
+    name = None
+
+    def __init__(cls, name, bases, dictionary):
+        type.__init__(cls, name, bases, dictionary)
+        if cls.name is not None:
+            cls.__classmap__[cls.name] = cls
+
+    def __call__(cls, *args, **kw):
+        if cls.name is not None:
+            return super(MSRPHeaderMeta, cls).__call__(*args, **kw)  # specialized class, instantiated directly.
+        else:
+            return cls._instantiate_specialized_class(*args, **kw)   # non-specialized class, instantiated as a more specialized class if available.
+
+    def _instantiate_specialized_class(cls, name, value):
+        if name in cls.__classmap__:
+            return super(MSRPHeaderMeta, cls.__classmap__[name]).__call__(value)
+        else:
+            return super(MSRPHeaderMeta, cls).__call__(name, value)
+
 
 class MSRPHeader(object):
     __metaclass__ = MSRPHeaderMeta
 
-    def __new__(cls, name, value):
-        if isinstance(value, str) and name in MSRPHeaderMeta.header_classes:
-            cls = MSRPHeaderMeta.header_classes[name]
-        return object.__new__(cls)
+    name = None
+    type = SimpleHeaderType
 
     def __init__(self, name, value):
         self.name = name
@@ -45,264 +226,192 @@ class MSRPHeader(object):
         else:
             self.decoded = value
 
-    def _raise_error(self):
-        raise HeaderParsingError(self.name)
+    def __eq__(self, other):
+        if isinstance(other, MSRPHeader):
+            return self.name == other.name and self.decoded == other.decoded
+        return NotImplemented
 
-    def _get_encoded(self):
+    def __ne__(self, other):
+        return not self == other
+
+    @property
+    def encoded(self):
         if self._encoded is None:
-            self._encoded = self._encode(self._decoded)
+            self._encoded = self.type.encode(self._decoded)
         return self._encoded
 
-    def _set_encoded(self, encoded):
+    @encoded.setter
+    def encoded(self, encoded):
         self._encoded = encoded
         self._decoded = None
 
-    encoded = property(_get_encoded, _set_encoded)
-
-    def _get_decoded(self):
+    @property
+    def decoded(self):
         if self._decoded is None:
-            self._decoded = self._decode(self._encoded)
+            try:
+                self._decoded = self.type.decode(self._encoded)
+            except Exception as e:
+                raise HeaderParsingError(self.name, str(e))
         return self._decoded
 
-    def _set_decoded(self, decoded):
+    @decoded.setter
+    def decoded(self, decoded):
+        if not isinstance(decoded, self.type.data_type):
+            try:
+                # noinspection PyArgumentList
+                decoded = self.type.data_type(decoded)
+            except Exception:
+                raise TypeError('value must be an instance of {}'.format(self.type.data_type.__name__))
         self._decoded = decoded
         self._encoded = None
 
-    decoded = property(_get_decoded, _set_decoded)
-
-    def _decode(self, encoded):
-        return encoded
-
-    def _encode(self, decoded):
-        return decoded
 
 class MSRPNamedHeader(MSRPHeader):
-
-    def __new__(cls, *args):
-        if len(args) == 1:
-            value = args[0]
-        else:
-            value = args[1]
-        return MSRPHeader.__new__(cls, cls.name, value)
-
-    def __init__(self, *args):
-        if len(args) == 1:
-            value = args[0]
-        else:
-            value = args[1]
+    def __init__(self, value):
         MSRPHeader.__init__(self, self.name, value)
 
-class URIHeader(MSRPNamedHeader):
 
-    def _decode(self, encoded):
-        try:
-            return deque(parse_uri(uri) for uri in encoded.split(" "))
-        except ParsingError:
-            self._raise_error()
+class ToPathHeader(MSRPNamedHeader):
+    name = 'To-Path'
+    type = URIHeaderType
 
-    def _encode(self, decoded):
-        return " ".join([str(uri) for uri in decoded])
 
-class IntegerHeader(MSRPNamedHeader):
+class FromPathHeader(MSRPNamedHeader):
+    name = 'From-Path'
+    type = URIHeaderType
 
-    def _decode(self, encoded):
-        try:
-            return int(encoded)
-        except ValueError:
-            self._raise_error()
-
-    def _encode(self, decoded):
-        return str(decoded)
-
-class DigestHeader(MSRPNamedHeader):
-
-    def _decode(self, encoded):
-        try:
-            algo, params = encoded.split(" ", 1)
-        except ValueError:
-            self._raise_error()
-        if algo != "Digest":
-            self._raise_error()
-        try:
-            param_dict = dict((x.strip('"') for x in param.split("=", 1)) for param in params.split(", "))
-        except:
-            self._raise_error()
-        return param_dict
-
-    def _encode(self, decoded):
-        return "Digest " + ", ".join(['%s="%s"' % tup for tup in decoded.iteritems()])
-
-class ToPathHeader(URIHeader):
-    name = "To-Path"
-
-class FromPathHeader(URIHeader):
-    name = "From-Path"
 
 class MessageIDHeader(MSRPNamedHeader):
-    name = "Message-ID"
+    name = 'Message-ID'
+    type = SimpleHeaderType
+
 
 class SuccessReportHeader(MSRPNamedHeader):
-    name = "Success-Report"
+    name = 'Success-Report'
+    type = SuccessReportHeaderType
 
-    def _decode(self, encoded):
-        if encoded not in ["yes", "no"]:
-            self._raise_error()
-        return encoded
 
 class FailureReportHeader(MSRPNamedHeader):
-    name = "Failure-Report"
+    name = 'Failure-Report'
+    type = FailureReportHeaderType
 
-    def _decode(self, encoded):
-        if encoded not in ["yes", "no", "partial"]:
-            self._raise_error()
-        return encoded
 
 class ByteRangeHeader(MSRPNamedHeader):
-    name = "Byte-Range"
-
-    def _decode(self, encoded):
-        try:
-            rest, total = encoded.split("/")
-            fro, to = rest.split("-")
-            fro = int(fro)
-        except ValueError:
-            self._raise_error()
-        try:
-            to = int(to)
-        except ValueError:
-            if to != "*":
-                self._raise_error()
-            to = None
-        try:
-            total = int(total)
-        except ValueError:
-            if total != "*":
-                self._raise_error()
-            total = None
-        return (fro, to, total)
-
-    def _encode(self, decoded):
-        fro, to, total = decoded
-        if to is None:
-            to = "*"
-        if total is None:
-            total = "*"
-        return "%s-%s/%s" % (fro, to, total)
+    name = 'Byte-Range'
+    type = ByteRangeHeaderType
 
     @property
-    def fro(self):
-        return self.decoded[0]
+    def start(self):
+        return self.decoded.start
 
     @property
-    def to(self):
-        return self.decoded[1]
+    def end(self):
+        return self.decoded.end
 
     @property
     def total(self):
-        return self.decoded[2]
+        return self.decoded.total
+
 
 class StatusHeader(MSRPNamedHeader):
-    name = "Status"
-
-    def _decode(self, encoded):
-        try:
-            namespace, rest = encoded.split(" ", 1)
-        except ValueError:
-            self._raise_error()
-        if namespace != "000":
-            self._raise_error()
-        rest_sp = rest.split(" ", 1)
-        try:
-            if len(rest_sp[0]) != 3:
-                raise ValueError
-            code = int(rest_sp[0])
-        except ValueError:
-            self._raise_error()
-        try:
-            comment = rest_sp[1]
-        except IndexError:
-            comment = None
-        return (code, comment)
-
-    def _encode(self, decoded):
-        code, comment = decoded
-        encoded = "000 %03d" % code
-        if comment is not None:
-            encoded += " %s" % comment
-        return encoded
+    name = 'Status'
+    type = StatusHeaderType
 
     @property
     def code(self):
-        return self.decoded[0]
+        return self.decoded.code
 
     @property
     def comment(self):
-        return self.decoded[1]
+        return self.decoded.comment
 
-class ExpiresHeader(IntegerHeader):
-    name = "Expires"
 
-class MinExpiresHeader(IntegerHeader):
-    name = "Min-Expires"
+class ExpiresHeader(MSRPNamedHeader):
+    name = 'Expires'
+    type = IntegerHeaderType
 
-class MaxExpiresHeader(IntegerHeader):
-    name = "Max-Expires"
 
-class UsePathHeader(URIHeader):
-    name = "Use-Path"
+class MinExpiresHeader(MSRPNamedHeader):
+    name = 'Min-Expires'
+    type = IntegerHeaderType
 
-class WWWAuthenticateHeader(DigestHeader):
-    name = "WWW-Authenticate"
 
-class AuthorizationHeader(DigestHeader):
-    name = "Authorization"
+class MaxExpiresHeader(MSRPNamedHeader):
+    name = 'Max-Expires'
+    type = IntegerHeaderType
+
+
+class UsePathHeader(MSRPNamedHeader):
+    name = 'Use-Path'
+    type = URIHeaderType
+
+
+class WWWAuthenticateHeader(MSRPNamedHeader):
+    name = 'WWW-Authenticate'
+    type = DigestHeaderType
+
+
+class AuthorizationHeader(MSRPNamedHeader):
+    name = 'Authorization'
+    type = DigestHeaderType
+
 
 class AuthenticationInfoHeader(MSRPNamedHeader):
-    name = "Authentication-Info"
+    name = 'Authentication-Info'
+    type = ParameterListHeaderType
 
-    def _decode(self, encoded):
-        try:
-            param_dict = dict((x.strip('"') for x in param.split("=", 1)) for param in encoded.split(", "))
-        except:
-            self._raise_error()
-        return param_dict
-
-    def _encode(self, decoded):
-        return ", ".join(['%s="%s"' % tup for tup in decoded.iteritems()])
 
 class ContentTypeHeader(MSRPNamedHeader):
-    name = "Content-Type"
+    name = 'Content-Type'
+    type = SimpleHeaderType
+
 
 class ContentIDHeader(MSRPNamedHeader):
-    name = "Content-ID"
+    name = 'Content-ID'
+    type = SimpleHeaderType
+
 
 class ContentDescriptionHeader(MSRPNamedHeader):
-    name = "Content-Description"
+    name = 'Content-Description'
+    type = SimpleHeaderType
+
 
 class ContentDispositionHeader(MSRPNamedHeader):
-    name = "Content-Disposition"
+    name = 'Content-Disposition'
+    type = ContentDispositionHeaderType
 
-    def _decode(self, encoded):
-        try:
-            sp = encoded.split(";")
-            disposition = sp[0]
-            parameters = dict(param.split("=", 1) for param in sp[1:])
-        except:
-            self._raise_error()
-        return [disposition, parameters]
-
-    def _encode(self, decoded):
-        disposition, parameters = decoded
-        return ";".join([disposition] + ["%s=%s" % pair for pair in parameters.iteritems()])
 
 class UseNicknameHeader(MSRPNamedHeader):
-    name = "Use-Nickname"
+    name = 'Use-Nickname'
+    type = UTF8HeaderType
 
-    def _decode(self, encoded):
-        return encoded.decode('utf-8')
 
-    def _encode(self, decoded):
-        return decoded.encode('utf-8')
+class HeaderOrderMapping(dict):
+    __levels__ = {
+        0: ['To-Path'],
+        1: ['From-Path'],
+        2: ['Status', 'Message-ID', 'Byte-Range', 'Success-Report', 'Failure-Report'] +
+           ['Authorization', 'Authentication-Info', 'WWW-Authenticate', 'Expires', 'Min-Expires', 'Max-Expires', 'Use-Path', 'Use-Nickname'],
+        3: ['Content-ID', 'Content-Description', 'Content-Disposition'],
+        4: ['Content-Type']
+    }
+
+    def __init__(self):
+        super(HeaderOrderMapping, self).__init__({name: level for level, name_list in self.__levels__.items() for name in name_list})
+
+    def __missing__(self, key):
+        return 3 if key.startswith('Content-') else 2
+
+    sort_key = dict.__getitem__
+
+
+class HeaderOrdering(object):
+    name_map = HeaderOrderMapping()
+    sort_key = name_map.sort_key
+
+
+class MissingHeader(object):
+    decoded = None
 
 
 class MSRPData(object):
@@ -320,36 +429,25 @@ class MSRPData(object):
         self.headers = headers or {}
         self.data = data
         self.contflag = contflag
+        if method is not None:
+            self._first_line = 'MSRP {} {}'.format(transaction_id, method)
+        elif comment is None:
+            self._first_line = 'MSRP {} {:03d}'.format(transaction_id, code)
+        else:
+            self._first_line = 'MSRP {} {:03d} {}'.format(transaction_id, code, comment)
 
     def copy(self):
-        chunk = self.__class__(self.transaction_id)
-        chunk.__dict__.update(self.__dict__)
-        chunk.headers = dict(self.headers.items())
-        return chunk
+        return self.__class__(self.transaction_id, self.method, self.code, self.comment, self.headers.copy(), self.data, self.contflag)
 
-    def __str__(self):
-        if self.method is None:
-            description = "MSRP %s %s" % (self.transaction_id, self.code)
-            if self.comment is not None:
-                description += " %s" % self.comment
-        else:
-            description = "MSRP %s %s" % (self.transaction_id, self.method)
-        return description
+    def __str__(self):  # TODO: make __str__ == encode()?
+        return self._first_line
 
     def __repr__(self):
-        klass = type(self).__name__
-        if self.method is None:
-            description = "%s %s" % (self.transaction_id, self.code)
-            if self.comment is not None:
-                description += " %s" % self.comment
-        else:
-            description = "%s %s" % (self.transaction_id, self.method)
-        if self.message_id is not None:
-            description += ' Message-ID=%s' % self.message_id
-        for key, value in self.headers.items():
-            description += ' %s=%r' % (key, value.encoded)
-        description += ' len=%s' % self.size
-        return '<%s at %s %s %s>' % (klass, hex(id(self)), description, self.contflag)
+        description = self._first_line
+        for name in sorted(self.headers, key=HeaderOrdering.sort_key):
+            description += ' {}={!r}'.format(name, self.headers[name].encoded)
+        description += ' len={}'.format(self.size)
+        return '<{} at {:#x} {} {}>'.format(self.__class__.__name__, id(self), description, self.contflag)
 
     def __eq__(self, other):
         if not isinstance(other, MSRPData):
@@ -360,78 +458,57 @@ class MSRPData(object):
         self.headers[header.name] = header
 
     def verify_headers(self):
-        try: # Decode To-/From-path headers first to be able to send responses
-            self.headers["To-Path"].decoded
-            self.headers["From-Path"].decoded
-        except KeyError, e:
-            raise HeaderParsingError(e.args[0])
+        if 'To-Path' not in self.headers:
+            raise HeaderParsingError('To-Path', 'header is missing')
+        if 'From-Path' not in self.headers:
+            raise HeaderParsingError('From-Path', 'header is missing')
         for header in self.headers.itervalues():
-            header.decoded
+            _ = header.decoded
+
+    @property
+    def from_path(self):
+        return self.headers.get('From-Path', MissingHeader).decoded
+
+    @property
+    def to_path(self):
+        return self.headers.get('To-Path', MissingHeader).decoded
 
     @property
     def content_type(self):
-        x = self.headers.get('Content-Type')
-        if x is None:
-            return x
-        return x.decoded
+        return self.headers.get('Content-Type', MissingHeader).decoded
 
     @property
     def message_id(self):
-        x = self.headers.get('Message-ID')
-        if x is None:
-            return x
-        return x.decoded
+        return self.headers.get('Message-ID', MissingHeader).decoded
 
     @property
     def byte_range(self):
-        x = self.headers.get('Byte-Range')
-        if x is None:
-            return x
-        return x.decoded
+        return self.headers.get('Byte-Range', MissingHeader).decoded
 
     @property
     def status(self):
-        return self.headers.get('Status')
+        return self.headers.get('Status', MissingHeader).decoded
 
     @property
     def failure_report(self):
-        if "Failure-Report" in self.headers:
-            return self.headers["Failure-Report"].decoded
-        else:
-            return "yes"
+        return self.headers.get('Failure-Report', MissingHeader).decoded or 'yes'
 
     @property
     def success_report(self):
-        if "Success-Report" in self.headers:
-            return self.headers["Success-Report"].decoded
-        else:
-            return "no"
+        return self.headers.get('Success-Report', MissingHeader).decoded or 'no'
 
     @property
     def size(self):
         return len(self.data)
 
     def encode_start(self):
-        data = []
-        if self.method is not None:
-            data.append("MSRP %(transaction_id)s %(method)s" % self.__dict__)
-        else:
-            data.append("MSRP %(transaction_id)s %(code)03d" % self.__dict__ + (self.comment is not None and " %s" % self.comment or ""))
-        headers = self.headers.copy()
-        data.append("To-Path: %s" % headers.pop("To-Path").encoded)
-        data.append("From-Path: %s" % headers.pop("From-Path").encoded)
-        for hnameval in [(hname, headers.pop(hname).encoded) for hname in headers.keys() if not hname.startswith("Content-")]:
-            data.append("%s: %s" % hnameval)
-        for hnameval in [(hname, headers.pop(hname).encoded) for hname in headers.keys() if hname != "Content-Type"]:
-            data.append("%s: %s" % hnameval)
-        if len(headers) > 0:
-            data.append("Content-Type: %s" % headers["Content-Type"].encoded)
-            data.append("")
-            data.append("")
-        return "\r\n".join(data)
+        lines = [self._first_line] + ['{}: {}'.format(name, self.headers[name].encoded) for name in sorted(self.headers, key=HeaderOrdering.sort_key)]
+        if 'Content-Type' in self.headers:
+            lines.append('\r\n')
+        return '\r\n'.join(lines)
 
     def encode_end(self, continuation):
-        return "\r\n-------%s%s\r\n" % (self.transaction_id, continuation)
+        return '\r\n-------%s%s\r\n' % (self.transaction_id, continuation)
 
     def encode(self):
         return self.encode_start() + self.data + self.encode_end(self.contflag)

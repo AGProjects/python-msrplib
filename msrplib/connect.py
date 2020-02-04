@@ -1,4 +1,5 @@
 # Copyright (C) 2008-2012 AG Projects. See LICENSE for details
+
 """Establish MSRP connection.
 
 This module provides means to obtain a connected and bound MSRPTransport
@@ -433,31 +434,31 @@ class MSRPServer(ConnectBase):
         self.logger.info(msg)
         with MSRPBindSessionTimeout.timeout():
             chunk = msrp.read_chunk()
-            ToPath = tuple(chunk.headers['To-Path'].decoded)
-            if len(ToPath)!=1:
+            to_path = chunk.to_path
+            if len(to_path) != 1:
                 msrp.write_response(chunk, 400, 'Invalid To-Path', wait=False)
                 msrp.loseConnection(wait=False)
                 return
-            ToPath = ToPath[0]
-            if ToPath in self.expected_local_uris:
-                logger = self.expected_local_uris.pop(ToPath)
+            to_path = to_path[0]
+            if to_path in self.expected_local_uris:
+                logger = self.expected_local_uris.pop(to_path)
                 if logger is not None:
                     msrp.logger = logger
-                msrp.local_uri = ToPath
+                msrp.local_uri = to_path
             else:
                 msrp.write_response(chunk, 481, 'Unknown To-Path', wait=False)
                 msrp.loseConnection(wait=False)
                 return
-            FromPath = tuple(chunk.headers['From-Path'].decoded)
+            from_path = tuple(chunk.from_path)
             # at this point, must wait for complete() function to be called which will
             # provide an event for this full_remote_path
             while True:
-                event = self.expected_remote_paths.pop(FromPath, None)
+                event = self.expected_remote_paths.pop(from_path, None)
                 if event is not None:
                     break
                 self.new_full_remote_path_notifier.wait()
         if event is not None:
-            msrp._set_full_remote_path(list(FromPath))
+            msrp._set_full_remote_path(list(from_path))
             error = msrp.check_incoming_SEND_chunk(chunk)
         else:
             error = MSRPNoSuchSessionError
