@@ -117,7 +117,7 @@ class ByteRangeHeaderType(object):
     @staticmethod
     def encode(decoded):
         start, end, total = decoded
-        return '{}-{}/{}'.format(start, end or '*', total or '*')
+        return '{}-{}/{}'.format(start, '*' if end is None else end, '*' if total is None else total)
 
 
 class StatusHeaderType(object):
