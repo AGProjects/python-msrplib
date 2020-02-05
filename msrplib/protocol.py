@@ -494,6 +494,11 @@ class MSRPData(object):
                 self.__modified__ = True
         super(MSRPData, self).__setattr__(name, value)
 
+    def __delattr__(self, name):
+        if name in self.__immutable__:
+            raise AttributeError('Cannot delete attribute')
+        super(MSRPData, self).__delattr__(name)
+
     def __str__(self):  # TODO: make __str__ == encode()?
         return self.first_line
 
