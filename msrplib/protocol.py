@@ -414,7 +414,55 @@ class MissingHeader(object):
     decoded = None
 
 
+class HeaderMapping(dict):
+    def __init__(self, *args, **kw):
+        super(HeaderMapping, self).__init__(*args, **kw)
+        self.__modified__ = True
+
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__, super(HeaderMapping, self).__repr__())
+
+    def __setitem__(self, key, value):
+        super(HeaderMapping, self).__setitem__(key, value)
+        self.__modified__ = True
+
+    def __delitem__(self, key):
+        super(HeaderMapping, self).__delitem__(key)
+        self.__modified__ = True
+
+    def __copy__(self):
+        return self.__class__(self)
+
+    def clear(self):
+        super(HeaderMapping, self).clear()
+        self.__modified__ = True
+
+    def copy(self):
+        return self.__class__(self)
+
+    def pop(self, *args):
+        result = super(HeaderMapping, self).pop(*args)
+        self.__modified__ = True
+        return result
+
+    def popitem(self):
+        result = super(HeaderMapping, self).popitem()
+        self.__modified__ = True
+        return result
+
+    def setdefault(self, *args):
+        result = super(HeaderMapping, self).setdefault(*args)
+        self.__modified__ = True
+        return result
+
+    def update(self, *args, **kw):
+        super(HeaderMapping, self).update(*args, **kw)
+        self.__modified__ = True
+
+
 class MSRPData(object):
+    __immutable__ = frozenset({'method', 'code', 'comment', 'headers'})  # Immutable attributes (cannot be overwritten)
+
     def __init__(self, transaction_id, method=None, code=None, comment=None, headers=None, data='', contflag='$'):
         if method is None and code is None:
             raise ValueError('either method or code must be specified')
@@ -426,7 +474,7 @@ class MSRPData(object):
         self.method = method
         self.code = code
         self.comment = comment
-        self.headers = headers or {}
+        self.headers = HeaderMapping(headers or {})
         self.data = data
         self.contflag = contflag
         if method is not None:
@@ -435,12 +483,15 @@ class MSRPData(object):
             self.first_line = 'MSRP {} {:03d}'.format(transaction_id, code)
         else:
             self.first_line = 'MSRP {} {:03d} {}'.format(transaction_id, code, comment)
+        self.__modified__ = True
 
     def __setattr__(self, name, value):
-        if name in {'method', 'code', 'comment'} and name in self.__dict__:
-            raise AttributeError('Cannot overwrite attribute')
-        if name == 'transaction_id' and name in self.__dict__:
-            self.first_line = self.first_line.replace(self.transaction_id, value)
+        if name in self.__dict__:
+            if name in self.__immutable__:
+                raise AttributeError('Cannot overwrite attribute')
+            elif name == 'transaction_id':
+                self.first_line = self.first_line.replace(self.transaction_id, value)
+                self.__modified__ = True
         super(MSRPData, self).__setattr__(name, value)
 
     def __str__(self):  # TODO: make __str__ == encode()?
@@ -511,17 +562,22 @@ class MSRPData(object):
     def size(self):
         return len(self.data)
 
-    def encode_start(self):
-        lines = [self.first_line] + ['{}: {}'.format(name, self.headers[name].encoded) for name in sorted(self.headers, key=HeaderOrdering.sort_key)]
-        if 'Content-Type' in self.headers:
-            lines.append('\r\n')
-        return '\r\n'.join(lines)
+    @property
+    def encoded_header(self):
+        if self.__modified__ or self.headers.__modified__:
+            lines = [self.first_line] + ['{}: {}'.format(name, self.headers[name].encoded) for name in sorted(self.headers, key=HeaderOrdering.sort_key)]
+            if 'Content-Type' in self.headers:
+                lines.append('\r\n')
+            self.__dict__['encoded_header'] = '\r\n'.join(lines)
+            self.__modified__ = self.headers.__modified__ = False
+        return self.__dict__['encoded_header']
 
-    def encode_end(self, continuation):
-        return '\r\n-------%s%s\r\n' % (self.transaction_id, continuation)
+    @property
+    def encoded_footer(self):
+        return '\r\n-------{}{}\r\n'.format(self.transaction_id, self.contflag)
 
     def encode(self):
-        return self.encode_start() + self.data + self.encode_end(self.contflag)
+        return self.encoded_header + self.data + self.encoded_footer
 
 
 class MSRPProtocol(LineReceiver):

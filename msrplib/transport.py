@@ -195,10 +195,10 @@ class MSRPTransport(GreenTransportBase):
         return GreenTransportBase.write(self, bytes, wait)
 
     def write_chunk(self, chunk, wait=True):
-        trailer = chunk.encode_start()
-        footer = chunk.encode_end(chunk.contflag)
-        self.write(trailer+chunk.data+footer, wait=wait)
-        self.logger.sent_new_chunk(trailer, self, chunk=chunk)
+        header = chunk.encoded_header
+        footer = chunk.encoded_footer
+        self.write(header+chunk.data+footer, wait=wait)
+        self.logger.sent_new_chunk(header, self, chunk=chunk)
         if chunk.data:
             self.logger.sent_chunk_data(chunk.data, self, chunk.transaction_id)
         self.logger.sent_chunk_end(footer, self, chunk.transaction_id)
