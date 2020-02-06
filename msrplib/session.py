@@ -94,7 +94,7 @@ class MSRPSession(object):
     logger = property(_get_logger, _set_logger)
 
     def set_state(self, state):
-        self.logger.debug('%s (was %s)' % (state, self.state))
+        self.logger.debug('%s (was %s)', state, self.state)
         self.state = state
 
     @property
@@ -208,7 +208,7 @@ class MSRPSession(object):
                         if chunk.method is None:
                             self._handle_incoming_response(chunk)
                         else:
-                            self.logger.debug('dropping incoming %r' % chunk)
+                            self.logger.debug('dropping incoming %r', chunk)
                 # read whatever left in the queue
                 with api.timeout(0, None):
                     while self.msrp._queue:
@@ -216,14 +216,14 @@ class MSRPSession(object):
                         if chunk.method is None:
                             self._handle_incoming_response(chunk)
                         else:
-                            self.logger.debug('dropping incoming %r' % chunk)
+                            self.logger.debug('dropping incoming %r', chunk)
             self.logger.debug('reader: done')
-        except ConnectionClosedErrors, ex:
-            self.logger.debug('reader: exiting because of %r' % ex)
-            error=Failure(ex)
+        except ConnectionClosedErrors as e:
+            self.logger.debug('reader: exiting because of %r', e)
+            error = Failure(e)
         except Exception:
-            self.logger.err('reader: captured unhandled exception\n%r' % traceback.format_exc())
-            error=Failure()
+            self.logger.exception('reader: captured unhandled exception:')
+            error = Failure()
             raise
         finally:
             self._on_incoming_cb(error=error)
@@ -240,7 +240,7 @@ class MSRPSession(object):
         except ConnectionClosedErrors + (proc.LinkedExited, proc.ProcExit), e:
             self.logger.debug('writer: exiting because of %r' % e)
         except:
-            self.logger.err('writer: captured unhandled exception:\n%s' % traceback.format_exc())
+            self.logger.exception('writer: captured unhandled exception:')
             raise
         finally:
             self.msrp.loseConnection(wait=False)

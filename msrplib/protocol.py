@@ -477,6 +477,8 @@ class MSRPData(object):
         self.headers = HeaderMapping(headers or {})
         self.data = data
         self.contflag = contflag
+        self.chunk_header = None  # the chunk header (if the data was received from the network)
+        self.chunk_footer = None  # the chunk footer (if the data was received from the network)
         if method is not None:
             self.first_line = 'MSRP {} {}'.format(transaction_id, method)
         elif comment is None:
@@ -585,6 +587,7 @@ class MSRPData(object):
         return self.encoded_header + self.data + self.encoded_footer
 
 
+# noinspection PyProtectedMember
 class MSRPProtocol(LineReceiver):
     MAX_LENGTH = 16384
     MAX_LINES = 64
@@ -594,10 +597,10 @@ class MSRPProtocol(LineReceiver):
         self.term_buf = ''
         self.term_re = None
         self.term_substrings = []
-        self._reset()
+        self.data = None
+        self.line_count = 0
 
     def _reset(self):
-        self._chunk_header = ''
         self.data = None
         self.line_count = 0
 
@@ -614,26 +617,22 @@ class MSRPProtocol(LineReceiver):
                 self.term_substrings = [terminator[:i] for i in xrange(1, len(terminator)+1)] + [terminator+cont[:i] for cont in continue_flags for i in xrange(1, len(cont))]
                 self.term_substrings.reverse()
 
-                self.msrp_transport.logger.received_new_chunk(self._chunk_header+self.delimiter, self.msrp_transport, chunk=self.data)
+                self.data.chunk_header += self.delimiter
                 self.msrp_transport._data_start(self.data)
                 self.setRawMode()
             else:
                 match = self.term_re.match(line)
                 if match:
                     continuation = match.group(1)
-                    self.msrp_transport.logger.received_new_chunk(self._chunk_header, self.msrp_transport, chunk=self.data)
-                    self.msrp_transport.logger.received_chunk_end(line+self.delimiter, self.msrp_transport, transaction_id=self.data.transaction_id)
+                    self.data.chunk_footer = line + self.delimiter
                     self.msrp_transport._data_start(self.data)
                     self.msrp_transport._data_end(continuation)
                     self._reset()
-                    # This line is only here because it allows the subclass MSRPPRotocol_withLogging
-                    # to know that the packet ended. In need of redesign. -Luci
-                    self.setLineMode('')
                 else:
-                    self._chunk_header += line+self.delimiter
+                    self.data.chunk_header += line + self.delimiter
                     self.line_count += 1
                     if self.line_count > self.MAX_LINES:
-                        self.msrp_transport.logger.received_illegal_data(self._chunk_header, self.msrp_transport)
+                        self.msrp_transport.logger.received_illegal_data(self.data.chunk_header, self.msrp_transport)
                         self._reset()
                         return
                     try:
@@ -644,13 +643,12 @@ class MSRPProtocol(LineReceiver):
                         self.data.add_header(MSRPHeader(name, value))
         else: # we received a new message
             try:
-                msrp, transaction_id, rest = line.split(" ", 2)
+                msrp, transaction_id, rest = line.split(' ', 2)
+                if msrp != 'MSRP':
+                    raise ValueError
             except ValueError:
-                self.msrp_transport.logger.received_illegal_data(line+self.delimiter, self.msrp_transport)
-                return # drop connection?
-            if msrp != "MSRP":
-                self.msrp_transport.logger.received_illegal_data(line+self.delimiter, self.msrp_transport)
-                return # drop connection?
+                self.msrp_transport.logger.received_illegal_data(line + self.delimiter, self.msrp_transport)
+                return  # drop connection?
             method, code, comment = None, None, None
             rest_sp = rest.split(" ", 1)
             try:
@@ -664,7 +662,7 @@ class MSRPProtocol(LineReceiver):
                     comment = rest_sp[1]
             self.data = MSRPData(transaction_id, method, code, comment)
             self.term_re = re.compile("^-------%s([$#+])$" % re.escape(transaction_id))
-            self._chunk_header = line+self.delimiter
+            self.data.chunk_header = line + self.delimiter
 
     def lineLengthExceeded(self, line):
         self._reset()
@@ -672,12 +670,11 @@ class MSRPProtocol(LineReceiver):
     def rawDataReceived(self, data):
         data = self.term_buf + data
         match = self.term_re.match(data)
-        if match: # we got the last data for this message
+        if match:  # we got the last data for this message
             contents, continuation, extra = match.groups()
             if contents:
-                self.msrp_transport.logger.received_chunk_data(contents, self.msrp_transport, transaction_id=self.data.transaction_id)
                 self.msrp_transport._data_write(contents, final=True)
-            self.msrp_transport.logger.received_chunk_end('\r\n-------%s%s\r\n' % (self.data.transaction_id, continuation), self.msrp_transport, transaction_id=self.data.transaction_id)
+            self.data.chunk_footer = '\r\n-------{}{}\r\n'.format(self.data.transaction_id, continuation)
             self.msrp_transport._data_end(continuation)
             self._reset()
             self.setLineMode(extra)
@@ -689,11 +686,10 @@ class MSRPProtocol(LineReceiver):
                     break
             else:
                 self.term_buf = ''
-            self.msrp_transport.logger.received_chunk_data(data, self.msrp_transport, transaction_id=self.data.transaction_id)
             self.msrp_transport._data_write(data, final=False)
 
     def connectionLost(self, reason=connectionDone):
-        self.msrp_transport._connectionLost(reason)
+        self.msrp_transport.connection_lost(reason)
 
 
 _re_uri = re.compile("^(?P<scheme>.*?)://(((?P<user>.*?)@)?(?P<host>.*?)(:(?P<port>[0-9]+?))?)(/(?P<session_id>.*?))?;(?P<transport>.*?)(;(?P<parameters>.*))?$")

@@ -23,12 +23,10 @@ from eventlib import proc
 
 from msrplib.connect import DirectConnector, DirectAcceptor, RelayConnection, MSRPRelaySettings, ConnectBase, MSRPServer
 from msrplib import protocol as pr
-from msrplib.trafficlog import TrafficLogger, Logger, hook_std_output
+from msrplib.trafficlog import Logger
 from msrplib.transport import MSRPTransport
 from msrplib.session import GreenMSRPSession, MSRPSessionError, LocalResponse
 
-# add tell() method to stdout (needed by TrafficLogger)
-hook_std_output()
 
 class NoisySRVConnector(SRVConnector):
 
@@ -309,13 +307,12 @@ parser.add_option('--log-server', action='store_true', default=False)
 parser.add_option('--debug', action='store_true', default=False)
 options, _args = parser.parse_args()
 
+log.Formatter.prefix_format = ''
 if options.debug:
     log.level.current = log.level.DEBUG
 
-if options.log_client:
-    TestBase.client_logger.traffic_logger = TrafficLogger.to_file(prefix='C ')
-if options.log_server:
-    TestBase.server_logger.traffic_logger = TrafficLogger.to_file(prefix='S ')
+TestBase.client_logger.log_traffic = options.log_client
+TestBase.server_logger.log_traffic = options.log_server
 
 relays = []
 # SRV:

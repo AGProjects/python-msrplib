@@ -42,32 +42,8 @@ class MSRPNoSuchSessionError(MSRPTransactionError):
     code = 481
     comment = 'No such session'
 
-data_start, data_end, data_write, data_final_write = xrange(4)
 
-class MSRPProtocol_withLogging(protocol.MSRPProtocol):
-
-    _new_chunk = True
-
-    def rawDataReceived(self, data):
-        self.msrp_transport.logger.report_in(data, self.msrp_transport, self._new_chunk)
-        protocol.MSRPProtocol.rawDataReceived(self, data)
-
-    def lineReceived(self, line):
-        self.msrp_transport.logger.report_in(line+self.delimiter, self.msrp_transport, self._new_chunk)
-        self._new_chunk = False
-        protocol.MSRPProtocol.lineReceived(self, line)
-
-    def connectionLost(self, reason):
-        msg = 'Closed connection to %s:%s' % (self.transport.getPeer().host, self.transport.getPeer().port)
-        if not isinstance(reason.value, ConnectionDone):
-            msg += ' (%s)' % reason.getErrorMessage()
-        self.msrp_transport.logger.info(msg)
-        protocol.MSRPProtocol.connectionLost(self, reason)
-
-    def setLineMode(self, extra):
-        self._new_chunk = True
-        self.msrp_transport.logger.report_in('', self.msrp_transport, packet_done=True)
-        return protocol.MSRPProtocol.setLineMode(self, extra)
+data_start, data_end, data_write, data_final_write = range(4)
 
 
 def make_report(chunk, code, comment):
@@ -113,7 +89,7 @@ def make_response(chunk, code, comment):
 
 
 class MSRPTransport(GreenTransportBase):
-    protocol_class = MSRPProtocol_withLogging
+    protocol_class = protocol.MSRPProtocol
 
     def __init__(self, local_uri, logger, use_sessmatch=False):
         GreenTransportBase.__init__(self)
@@ -189,19 +165,9 @@ class MSRPTransport(GreenTransportBase):
         else:
             self._queue.send((data_write, contents))
 
-    def write(self, bytes, wait=True):
-        """Write `bytes' to the socket. If `wait' is true, wait for an operation to complete"""
-        self.logger.report_out(bytes, self.transport)
-        return GreenTransportBase.write(self, bytes, wait)
-
     def write_chunk(self, chunk, wait=True):
-        header = chunk.encoded_header
-        footer = chunk.encoded_footer
-        self.write(header+chunk.data+footer, wait=wait)
-        self.logger.sent_new_chunk(header, self, chunk=chunk)
-        if chunk.data:
-            self.logger.sent_chunk_data(chunk.data, self, chunk.transaction_id)
-        self.logger.sent_chunk_end(footer, self, chunk.transaction_id)
+        self.write(chunk.encode(), wait=wait)
+        self.logger.sent_chunk(chunk, transport=self)
 
     def read_chunk(self, max_size=1024*1024*4):
         """Wait for a new chunk and return it.
@@ -215,7 +181,7 @@ class MSRPTransport(GreenTransportBase):
 
         func, msrpdata = self._wait()
         if func!=data_start:
-            self.logger.debug('Bad data: %r %r' % (func, msrpdata))
+            self.logger.debug('Bad data: %r %r', func, msrpdata)
             self.loseConnection()
             raise ChunkParseError
         data = msrpdata.data
@@ -223,7 +189,7 @@ class MSRPTransport(GreenTransportBase):
         while func == data_write:
             data += param
             if len(data) > max_size:
-                self.logger.debug('Chunk is too big (max_size=%d bytes)' % max_size)
+                self.logger.debug('Chunk is too big (max_size=%d bytes)', max_size)
                 self.loseConnection()
                 raise ChunkParseError
             func, param = self._wait()
@@ -231,16 +197,16 @@ class MSRPTransport(GreenTransportBase):
             data += param
             func, param = self._wait()
         if func != data_end:
-            self.logger.debug('Bad data: %r %s' % (func, repr(param)[:100]))
+            self.logger.debug('Bad data: %r %s', func, repr(param)[:100])
             self.loseConnection()
             raise ChunkParseError
         if param not in "$+#":
-            self.logger.debug('Bad data: %r %s' % (func, repr(param)[:100]))
+            self.logger.debug('Bad data: %r %s', func, repr(param)[:100])
             self.loseConnection()
             raise ChunkParseError
         msrpdata.data = data
         msrpdata.contflag = param
-        self.logger.debug('read_chunk -> %r' % (msrpdata, ))
+        self.logger.received_chunk(msrpdata, transport=self)
         return msrpdata
 
     def _set_full_remote_path(self, full_remote_path):
@@ -334,3 +300,9 @@ class MSRPTransport(GreenTransportBase):
                 log.error('From-Path: expected %r, got %r' % (expected_from, from_path))
                 return MSRPNoSuchSessionError('Invalid From-Path')
 
+    def connection_lost(self, reason):
+        message = 'Closed connection to {0.host}:{0.port}'.format(self.getPeer())
+        if not isinstance(reason.value, ConnectionDone):
+            message += ' ({})'.format(reason.getErrorMessage())
+        self.logger.info(message)
+        self._connectionLost(reason)

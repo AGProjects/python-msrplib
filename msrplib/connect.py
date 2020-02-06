@@ -152,7 +152,7 @@ class ConnectBase(object):
         self.local_uri = None
 
     def _connect(self, local_uri, remote_uri):
-        self.logger.info('Connecting to %s' % (remote_uri, ))
+        self.logger.info('Connecting to %s', remote_uri)
         creator = GreenClientCreator(gtransport_class=MSRPTransport, local_uri=local_uri, logger=self.logger, use_sessmatch=self.use_sessmatch)
         if remote_uri.host:
             if remote_uri.use_tls:
@@ -172,7 +172,8 @@ class ConnectBase(object):
                                       connectFuncName=connectFuncName,
                                       connectFuncArgs=connectFuncArgs,
                                       ConnectorClass=self.SRVConnectorClass)
-        self.logger.info('Connected to %s:%s' % (msrp.getPeer().host, msrp.getPeer().port))
+        remote_address = msrp.getPeer()
+        self.logger.info('Connected to %s:%s', remote_address.host, remote_address.port)
         return msrp
 
     def _listen(self, local_uri, factory):
@@ -181,8 +182,9 @@ class ConnectBase(object):
             port = reactor.listenTLS(local_uri.port or 0, factory, TLSContext(local_uri.credentials), interface=local_uri.host)
         else:
             port = reactor.listenTCP(local_uri.port or 0, factory, interface=local_uri.host)
-        local_uri.port = port.getHost().port
-        self.logger.info('Listening for incoming %s connections on %s:%s' % (local_uri.scheme.upper(), port.getHost().host, port.getHost().port))
+        local_address = port.getHost()
+        local_uri.port = local_address.port
+        self.logger.info('Listening for incoming %s connections on %s:%s', local_uri.scheme.upper(), local_address.host, local_address.port)
         return port
 
     def cleanup(self, wait=True):
@@ -256,8 +258,8 @@ class DirectAcceptor(ConnectBase):
         try:
             with MSRPIncomingConnectTimeout.timeout():
                 msrp = self.transport_event.wait()
-                msg = 'Incoming %s connection from %s:%s' % (self.local_uri.scheme.upper(), msrp.getPeer().host, msrp.getPeer().port)
-                self.logger.info(msg)
+                remote_address = msrp.getPeer()
+                self.logger.info('Incoming %s connection from %s:%s', self.local_uri.scheme.upper(), remote_address.host, remote_address.port)
         finally:
             self.cleanup()
         try:
@@ -304,10 +306,12 @@ class RelayConnection(ConnectBase):
         try:
             msrp = self._connect(self.local_uri, self.relay)
         except Exception:
-            self.logger.info('Could not connect  to relay %s' % self.relay)
+            self.logger.info('Could not connect  to relay %s', self.relay)
             raise
+        local_address = msrp.getHost()
+        remote_address = msrp.getPeer()
         try:
-            self.local_uri.port = msrp.getHost().port
+            self.local_uri.port = local_address.port
             msrpdata = protocol.MSRPData(method="AUTH", transaction_id='%x' % random.getrandbits(64))
             msrpdata.add_header(protocol.ToPathHeader([self.relay.uri_domain]))
             msrpdata.add_header(protocol.FromPathHeader([self.local_uri]))
@@ -322,11 +326,9 @@ class RelayConnection(ConnectBase):
             if response.code != 200:
                 raise MSRPRelayAuthError(comment=response.comment, code=response.code)
             msrp.set_local_path(list(response.headers["Use-Path"].decoded))
-            msg = 'Reserved session at relay %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
-            self.logger.info(msg)
+            self.logger.info('Reserved session at relay %s:%s', remote_address.host, remote_address.port)
         except:
-            msg = 'Could not reserve session at relay %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
-            self.logger.info(msg)
+            self.logger.info('Could not reserve session at relay %s:%s', remote_address.host, remote_address.port)
             msrp.loseConnection(wait=False)
             raise
         return msrp
@@ -430,8 +432,8 @@ class MSRPServer(ConnectBase):
         return [local_uri]
 
     def _incoming_handler(self, msrp):
-        msg = 'Incoming connection from %s:%s' % (msrp.getPeer().host, msrp.getPeer().port)
-        self.logger.info(msg)
+        peer = msrp.getPeer()
+        self.logger.info('Incoming connection from %s:%s', peer.host, peer.port)
         with MSRPBindSessionTimeout.timeout():
             chunk = msrp.read_chunk()
             to_path = chunk.to_path
