@@ -3,8 +3,9 @@
 import random
 import re
 
-from collections import deque, namedtuple
 from application.system import host as host_module
+from collections import deque, namedtuple
+from gnutls.interfaces.twisted import X509Credentials
 from twisted.internet.protocol import connectionDone
 from twisted.protocols.basic import LineReceiver
 
@@ -698,7 +699,6 @@ class ConnectInfo(object):
             self.port = port
         self.credentials = credentials
         if self.use_tls and self.credentials is None:
-            from gnutls.interfaces.twisted import X509Credentials
             self.credentials = X509Credentials(None, None)
 
     @property
