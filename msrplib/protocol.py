@@ -61,7 +61,7 @@ class URIHeaderType(object):
 
     @staticmethod
     def decode(encoded):
-        return deque(parse_uri(uri) for uri in encoded.split(' '))
+        return deque(URI.parse(uri) for uri in encoded.split(' '))
 
     @staticmethod
     def encode(decoded):
@@ -684,30 +684,6 @@ class MSRPProtocol(LineReceiver):
         self.msrp_transport.connection_lost(reason)
 
 
-_re_uri = re.compile("^(?P<scheme>.*?)://(((?P<user>.*?)@)?(?P<host>.*?)(:(?P<port>[0-9]+?))?)(/(?P<session_id>.*?))?;(?P<transport>.*?)(;(?P<parameters>.*))?$")
-def parse_uri(uri_str):
-    match = _re_uri.match(uri_str)
-    if match is None:
-        raise ParsingError("Cannot parse URI")
-    uri_params = match.groupdict()
-    if uri_params["port"] is not None:
-        uri_params["port"] = int(uri_params["port"])
-    if uri_params["parameters"] is not None:
-        try:
-            uri_params["parameters"] = dict(param.split("=") for param in uri_params["parameters"].split(";"))
-        except ValueError:
-            raise ParsingError("Cannot parse URI parameters")
-    scheme = uri_params.pop("scheme")
-    if scheme == "msrp":
-        uri_params["use_tls"] = False
-    elif scheme == "msrps":
-        uri_params["use_tls"] = True
-    else:
-        raise ParsingError("Invalid scheme user in URI: %s" % scheme)
-    if uri_params["transport"] != "tcp":
-        raise ParsingError('Invalid transport in URI, only "tcp" is accepted: %s' % uri_params["transport"])
-    return URI(**uri_params)
-
 class ConnectInfo(object):
     host = None
     use_tls = True
@@ -735,10 +711,9 @@ class ConnectInfo(object):
 
 # use TLS_URI and TCP_URI ?
 class URI(ConnectInfo):
+    _uri_re = re.compile(r'^(?P<scheme>.*?)://(((?P<user>.*?)@)?(?P<host>.*?)(:(?P<port>[0-9]+?))?)(/(?P<session_id>.*?))?;(?P<transport>.*?)(;(?P<parameters>.*))?$')
 
-    def __init__(self, host=None, use_tls=None, user=None, port=None,
-                 session_id=None, transport="tcp", parameters=None,
-                 credentials=None):
+    def __init__(self, host=None, use_tls=None, user=None, port=None, session_id=None, transport="tcp", parameters=None, credentials=None):
         ConnectInfo.__init__(self, host or host_module.default_ip, use_tls=use_tls, port=port, credentials=credentials)
         self.user = user
         if session_id is None:
@@ -749,6 +724,32 @@ class URI(ConnectInfo):
             self.parameters = {}
         else:
             self.parameters = parameters
+
+    # noinspection PyTypeChecker
+    @classmethod
+    def parse(cls, value):
+        match = cls._uri_re.match(value)
+        if match is None:
+            raise ParsingError('Cannot parse URI')
+
+        uri_params = match.groupdict()
+        scheme = uri_params.pop('scheme')
+
+        if scheme not in ('msrp', 'msrps'):
+            raise ParsingError('Invalid URI scheme: %r' % scheme)
+        if uri_params['transport'] != 'tcp':
+            raise ParsingError("Invalid URI transport: %r (only 'tcp' is accepted)" % uri_params['transport'])
+
+        uri_params['use_tls'] = scheme == 'msrps'
+        if uri_params['port'] is not None:
+            uri_params['port'] = int(uri_params['port'])
+        if uri_params['parameters'] is not None:
+            try:
+                uri_params['parameters'] = dict(param.split('=') for param in uri_params['parameters'].split(';'))
+            except ValueError:
+                raise ParsingError('Cannot parse URI parameters')
+
+        return cls(**uri_params)
 
     def __repr__(self):
         params = [self.host, self.use_tls, self.user, self.port, self.session_id, self.transport, self.parameters]
