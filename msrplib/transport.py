@@ -1,9 +1,10 @@
 # Copyright (C) 2008-2012 AG Projects. See LICENSE for details
 
 import random
+
 from application import log
-from twisted.internet.error import ConnectionDone
 from eventlib.twistedutil.protocol import GreenTransportBase
+from twisted.internet.error import ConnectionDone
 
 from msrplib import protocol, MSRPError
 from msrplib.trafficlog import Logger
