@@ -778,23 +778,14 @@ class URI(ConnectInfo):
         return "".join(uri_str)
 
     def __eq__(self, other):
-        """MSRP URI comparison according to section 6.1 of RFC 4975"""
         if self is other:
             return True
-        try:
-            if self.use_tls != other.use_tls:
-                return False
-            if self.host.lower() != other.host.lower():
-                return False
-            if self.port != other.port:
-                return False
-            if self.session_id != other.session_id:
-                return False
-            if self.transport.lower() != other.transport.lower():
-                return False
-        except AttributeError:
-            return False
-        return True
+        if isinstance(other, URI):
+            # MSRP URI comparison according to section 6.1 of RFC 4975
+            self_items = self.use_tls, self.host.lower(), self.port, self.session_id, self.transport.lower()
+            other_items = other.use_tls, other.host.lower(), other.port, other.session_id, other.transport.lower()
+            return self_items == other_items
+        return NotImplemented
 
     def __ne__(self, other):
         return not self == other
