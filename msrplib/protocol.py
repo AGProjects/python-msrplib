@@ -589,6 +589,9 @@ class MSRPData(object):
 
 # noinspection PyProtectedMember
 class MSRPProtocol(LineReceiver):
+    # TODO: _ in the method name is not legal, but sipsimple defined the FILE_OFFSET method
+    first_line_re = re.compile(r'^MSRP ([A-Za-z0-9][A-Za-z0-9.+%=-]{3,31}) (?:([A-Z_]+)|(\d{3})(?: (.+))?)$')
+
     MAX_LENGTH = 16384
     MAX_LINES = 64
 
@@ -638,31 +641,20 @@ class MSRPProtocol(LineReceiver):
                     try:
                         name, value = line.split(': ', 1)
                     except ValueError:
-                        return # let this pass silently, we'll just not read this line
+                        return  # let this pass silently, we'll just not read this line. TODO: review this (ignore or drop connection?)
                     else:
                         self.data.add_header(MSRPHeader(name, value))
-        else: # we received a new message
-            try:
-                msrp, transaction_id, rest = line.split(' ', 2)
-                if msrp != 'MSRP':
-                    raise ValueError
-            except ValueError:
+        else:
+            # this is a new message. TODO: drop connection if first line cannot be parsed?
+            match = self.first_line_re.match(line)
+            if match:
+                transaction_id, method, code, comment = match.groups()
+                code = int(code) if code is not None else None
+                self.data = MSRPData(transaction_id, method, code, comment)
+                self.data.chunk_header = line + self.delimiter
+                self.term_re = re.compile(r'^-------{}([$#+])$'.format(re.escape(transaction_id)))
+            else:
                 self.msrp_transport.logger.received_illegal_data(line + self.delimiter, self.msrp_transport)
-                return  # drop connection?
-            method, code, comment = None, None, None
-            rest_sp = rest.split(" ", 1)
-            try:
-                if len(rest_sp[0]) != 3:
-                    raise ValueError
-                code = int(rest_sp[0])
-            except ValueError: # we have a request
-                method = rest_sp[0]
-            else: # we have a response
-                if len(rest_sp) > 1:
-                    comment = rest_sp[1]
-            self.data = MSRPData(transaction_id, method, code, comment)
-            self.term_re = re.compile("^-------%s([$#+])$" % re.escape(transaction_id))
-            self.data.chunk_header = line + self.delimiter
 
     def lineLengthExceeded(self, line):
         self._reset()
