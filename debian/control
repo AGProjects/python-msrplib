@@ -8,7 +8,7 @@ Standards-Version: 3.9.8
 Package: python-msrplib
 Architecture: all
 Depends: ${python:Depends}, ${misc:Depends},
-         python-application (>= 2.5.0),
+         python-application (>= 2.8.0),
          python-gnutls (>= 3.0.0),
          python-eventlib,
          python-twisted-core,
