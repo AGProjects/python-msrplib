@@ -715,15 +715,14 @@ class URI(ConnectInfo):
 
     def __init__(self, host=None, use_tls=None, user=None, port=None, session_id=None, transport="tcp", parameters=None, credentials=None):
         ConnectInfo.__init__(self, host or host_module.default_ip, use_tls=use_tls, port=port, credentials=credentials)
-        self.user = user
         if session_id is None:
             session_id = '%x' % random.getrandbits(80)
-        self.session_id = session_id
-        self.transport = transport
         if parameters is None:
-            self.parameters = {}
-        else:
-            self.parameters = parameters
+            parameters = {}
+        self.user = user
+        self.transport = transport
+        self.session_id = session_id
+        self.parameters = parameters
 
     # noinspection PyTypeChecker
     @classmethod
@@ -752,30 +751,15 @@ class URI(ConnectInfo):
         return cls(**uri_params)
 
     def __repr__(self):
-        params = [self.host, self.use_tls, self.user, self.port, self.session_id, self.transport, self.parameters]
-        defaults = [False, None, None, None, 'tcp', {}]
-        while defaults and params[-1]==defaults[-1]:
-            del params[-1]
-            del defaults[-1]
-        return '%s(%s)' % (self.__class__.__name__, ', '.join(`x` for x in params))
+        arguments = 'host', 'use_tls', 'user', 'port', 'session_id', 'transport', 'parameters', 'credentials'
+        return '{}({})'.format(self.__class__.__name__, ', '.join('{}={!r}'.format(name, getattr(self, name)) for name in arguments))
 
     def __str__(self):
-        uri_str = []
-        if self.use_tls:
-            uri_str.append("msrps://")
-        else:
-            uri_str.append("msrp://")
-        if self.user:
-            uri_str.extend([self.user, "@"])
-        uri_str.append(self.host)
-        if self.port:
-            uri_str.extend([":", str(self.port)])
-        if self.session_id:
-            uri_str.extend(["/", self.session_id])
-        uri_str.extend([";", self.transport])
-        for key, value in self.parameters.iteritems():
-            uri_str.extend([";", key, "=", value])
-        return "".join(uri_str)
+        user_part = '{}@'.format(self.user) if self.user else ''
+        port_part = ':{}'.format(self.port) if self.port else ''
+        session_part = '/{}'.format(self.session_id) if self.session_id else ''
+        parameter_parts = [';{}={}'.format(name, value) for name, value in self.parameters.iteritems()] if self.parameters else []
+        return ''.join([self.scheme, '://', user_part, self.host, port_part, session_part, ';', self.transport] + parameter_parts)
 
     def __eq__(self, other):
         if self is other:
