@@ -16,8 +16,8 @@ log = log.get_logger('msrplib')
 class ChunkParseError(MSRPError):
     """Failed to parse incoming chunk"""
 
-class MSRPTransactionError(MSRPError):
 
+class MSRPTransactionError(MSRPError):
     def __init__(self, comment=None, code=None):
         if comment is not None:
             self.comment = comment
@@ -32,12 +32,14 @@ class MSRPTransactionError(MSRPError):
         else:
             return str(self.code)
 
+
 class MSRPBadRequest(MSRPTransactionError):
     code = 400
     comment = 'Bad Request'
 
     def __str__(self):
         return 'Remote party sent bogus data'
+
 
 class MSRPNoSuchSessionError(MSRPTransactionError):
     code = 481
@@ -122,7 +124,7 @@ class MSRPTransport(GreenTransportBase):
 
     @property
     def full_local_path(self):
-        "suitable to put into INVITE"
+        # suitable to put into INVITE
         return self.local_path + [self.local_uri]
 
     @property
@@ -181,7 +183,7 @@ class MSRPTransport(GreenTransportBase):
         assert max_size > 0
 
         func, msrpdata = self._wait()
-        if func!=data_start:
+        if func != data_start:
             self.logger.debug('Bad data: %r %r', func, msrpdata)
             self.loseConnection()
             raise ChunkParseError
@@ -211,7 +213,7 @@ class MSRPTransport(GreenTransportBase):
         return msrpdata
 
     def _set_full_remote_path(self, full_remote_path):
-        "as received in response to INVITE"
+        # as received in response to INVITE
         if not all(isinstance(x, protocol.URI) for x in full_remote_path):
             raise TypeError('Not all elements are MSRP URI: %r' % full_remote_path)
         self.remote_uri = full_remote_path[-1]
@@ -263,7 +265,7 @@ class MSRPTransport(GreenTransportBase):
         else:
             code, comment = error.code, error.comment
         self.write_response(chunk, code, comment)
-        if 'Content-Type' in chunk.headers or chunk.size>0:
+        if 'Content-Type' in chunk.headers or chunk.size > 0:
             # deliver chunk to read_chunk
             data = chunk.data
             chunk.data = ''
