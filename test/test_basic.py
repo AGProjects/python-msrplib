@@ -1,31 +1,25 @@
 # Copyright (C) 2008-2009 AG Projects. See LICENSE for details
 
-from __future__ import with_statement
-import sys
-import unittest
 import new
 import pprint
-from copy import copy
-
-from twisted.internet.error import ConnectionDone, ConnectionClosed
-from twisted.names.srvconnect import SRVConnector
-from twisted.internet import reactor
-
-from gnutls.errors import GNUTLSError
-from gnutls.crypto import X509PrivateKey, X509Certificate
-from gnutls.interfaces.twisted import X509Credentials
+import sys
+import unittest
 
 from application import log
-
-from eventlib import api
+from copy import copy
+from eventlib import api, proc
 from eventlib.coros import event
-from eventlib import proc
+from gnutls.crypto import X509PrivateKey, X509Certificate
+from gnutls.interfaces.twisted import X509Credentials
+from twisted.internet import reactor; del reactor  # need to import this to let eventlib know to use a twisted based reactor
+from twisted.internet.error import ConnectionDone, ConnectionClosed
+from twisted.names.srvconnect import SRVConnector
 
 from msrplib.connect import DirectConnector, DirectAcceptor, RelayConnection, MSRPRelaySettings, ConnectBase, MSRPServer
-from msrplib import protocol as pr
+from msrplib.protocol import ContentTypeHeader, SuccessReportHeader, FailureReportHeader, URI
+from msrplib.session import GreenMSRPSession, MSRPSessionError, LocalResponse
 from msrplib.trafficlog import Logger
 from msrplib.transport import MSRPTransport
-from msrplib.session import GreenMSRPSession, MSRPSessionError, LocalResponse
 
 
 class NoisySRVConnector(SRVConnector):
@@ -72,10 +66,10 @@ class TestBase(unittest.TestCase):
     server_credentials = None
 
     def get_client_uri(self):
-        return pr.URI(use_tls=self.use_tls)
+        return URI(use_tls=self.use_tls)
 
     def get_server_uri(self):
-        return pr.URI(port=0, use_tls=self.use_tls, credentials=self.server_credentials)
+        return URI(port=0, use_tls=self.use_tls, credentials=self.server_credentials)
 
     def get_connector(self):
         if self.client_relay is not None:
@@ -118,12 +112,12 @@ class TestBase(unittest.TestCase):
 
     def make_hello(self, msrptransport, success_report=None, failure_report=None):
         chunk = msrptransport.make_send_request(data='hello')
-        chunk.add_header(pr.ContentTypeHeader('text/plain'))
+        chunk.add_header(ContentTypeHeader('text/plain'))
         # because MSRPTransport does not send the responses, the relay must not either
         if success_report is not None:
-            chunk.add_header(pr.SuccessReportHeader(success_report))
+            chunk.add_header(SuccessReportHeader(success_report))
         if failure_report is not None:
-            chunk.add_header(pr.FailureReportHeader(failure_report))
+            chunk.add_header(FailureReportHeader(failure_report))
         return chunk
 
     def _test_write_chunk(self, sender, receiver):
@@ -261,7 +255,7 @@ class ServerTest(TestBase):
         return cls.server
 
     def get_server_uri(self):
-        return pr.URI(port=28550, use_tls=self.use_tls, credentials=self.server_credentials)
+        return URI(port=28550, use_tls=self.use_tls, credentials=self.server_credentials)
 
     def test_2_servers_same_port(self):
         server = self.get_server()
@@ -366,4 +360,3 @@ make_tests_for_other_configurations(MSRPSessionTest)
 if __name__=='__main__':
     test = unittest.defaultTestLoader.loadTestsFromModule(sys.modules['__main__'])
     testRunner = unittest.TextTestRunner().run(test)
-
