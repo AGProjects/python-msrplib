@@ -1,3 +1,51 @@
+python-msrplib (0.20.0) unstable; urgency=medium
+
+  * Updated TLS certificates
+  * Made MANIFEST.in more explicit and avoid unnecessary prune commands
+  * Increased debian compatibility level to 11 and updated dependencies
+  * Use pybuild for the debian package build system
+  * Install README in the debian package docs directory
+  * Updated license files
+  * Refactored setup.py to be PEP-8 compliant
+  * Fix logging for new chunks
+  * Store reference to class instead of class name
+  * Fixed method signature to match parent class
+  * Fixed splitting header name/value elements
+  * Removed main block from msrplib.protocol
+  * Validate MSRPData inputs
+  * Refactored MSRP header classes
+  * Fixed comparison operators for MSRPData
+  * Fixed handling of changing attributes on MSRPData
+  * Made attribute of MSRPData public
+  * Reordered methods on MSRPData
+  * Removed unused attribute (was always None)
+  * Cache the results of encoding MSRPData
+  * Protect immutable attributes against deletion as well
+  * Fixed encoding ByteRange headers
+  * Refactored logging system
+    - Rewrote the logger based on ContextualLogger from python-application
+    - Modeled the logging API after the one in application.log
+    - Aggregated all chunk reporting methods into received_chunk/sent_chunk
+    - Added missing received_illegal_chunk method for logging bad chunks
+    - Removed report_in/report_out line based logging methods
+    - Optimized logging to not evaluate messages until logged
+  * Removed unused imports and reordered imports alphabetically
+  * Fixed example scripts
+  * Improved speed and corectness in message parsing
+  * Refactored the parse_uri function into the URI.parse class method
+  * Fixed URI.__eq__ implementation
+  * Refactored URI methods for clarity
+  * Moved python import to top level
+  * Fixed indentation and spacing
+  * PEP-8 compliance fixes
+  * Updated python-application dependency
+  * Updated boring file
+  * Simplified keeping package version
+  * Increased debian standards version to 4.5.0
+  * Updated copyright years
+
+ -- Dan Pascu <dan@ag-projects.com>  Fri, 14 Feb 2020 11:39:43 +0200
+
 python-msrplib (0.19.2) unstable; urgency=medium
 
   * Replaced deprecated log.err() function with log.exception()
